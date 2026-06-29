@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <memory>
 
-namespace ext::physics {
+namespace exd::physics {
 
 // ─────────────────────────────────────────────────────
 // Domain classification
@@ -154,4 +154,4 @@ using DestroySolverFn = void (*)(ISolverPlugin*);
 constexpr const char* SOLVER_CREATE_SYMBOL  = "ext_solver_create";
 constexpr const char* SOLVER_DESTROY_SYMBOL = "ext_solver_destroy";
 
-} // namespace ext::physics
+} // namespace exd::physics

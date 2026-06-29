@@ -14,7 +14,7 @@ find_package(Threads REQUIRED)  # For solver threading
 # NOTE: This library contains the INTERFACE and DATA MODEL only.
 # Solver implementations are in separate extropian-solver-* repos.
 
-add_library(ext-physics STATIC
+add_library(exd-physics STATIC
     # Mesh
     src/mesh/unstructured_volume.cpp
     src/mesh/surface.cpp
@@ -54,23 +54,23 @@ add_library(ext-physics STATIC
     src/coupling/coupling_manager.cpp
 )
 
-target_include_directories(ext-physics PUBLIC include)
-target_include_directories(ext-physics PRIVATE src)
+target_include_directories(exd-physics PUBLIC include)
+target_include_directories(exd-physics PRIVATE src)
 
-target_link_libraries(ext-physics PUBLIC
-    ext::core
+target_link_libraries(exd-physics PUBLIC
+    exd::core
     Threads::Threads
 )
 
-add_library(ext::physics ALIAS ext-physics)
+add_library(exd::physics ALIAS exd-physics)
 
 # ── Install ───────────────────────────────────────────
 include(GNUInstallDirs)
-install(TARGETS ext-physics EXPORT ext-physics-targets
+install(TARGETS exd-physics EXPORT exd-physics-targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(EXPORT ext-physics-targets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ext-physics)
+install(EXPORT exd-physics-targets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/exd-physics)
 
 # ── Tests ─────────────────────────────────────────────
 option(EXT_PHYSICS_BUILD_TESTS "Build tests" OFF)
