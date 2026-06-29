@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Dependencies ──────────────────────────────────────
-find_package(ext-core REQUIRED)
+find_package(exd-core REQUIRED)
 find_package(Threads REQUIRED)  # For solver threading
 
 # ── Library target ────────────────────────────────────
