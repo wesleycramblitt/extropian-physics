@@ -73,12 +73,12 @@ target_link_libraries(exd-physics PUBLIC
 add_library(exd::physics ALIAS exd-physics)
 
 # ── Install ───────────────────────────────────────────
-include(GNUInstallDirs)
-install(TARGETS exd-physics EXPORT exd-physics-targets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(EXPORT exd-physics-targets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/exd-physics)
+#include(GNUInstallDirs)
+#install(TARGETS exd-physics EXPORT exd-physics-targets
+#    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#)
+#install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+#install(EXPORT exd-physics-targets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/exd-physics)
 
 # ── Tests ─────────────────────────────────────────────
 option(EXT_PHYSICS_BUILD_TESTS "Build tests" OFF)
