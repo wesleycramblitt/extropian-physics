@@ -1,8 +1,5 @@
-// Material property database
-
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 namespace exd::physics::material {
 
@@ -11,63 +8,66 @@ enum class MaterialType { Fluid, Solid, Electromagnetic };
 struct MaterialProperties {
     std::string name;
     MaterialType type = MaterialType::Fluid;
-
-    // Fluid properties
-    double density = 1.0;            // kg/m^3
-    double dynamic_viscosity = 0.001;// Pa·s
-    double kinematic_viscosity = 0;  // m^2/s (computed from density+viscosity)
-
-    // Solid properties
-    double youngs_modulus = 0;       // Pa
+    double density = 1.0;
+    double dynamic_viscosity = 0.001;
+    double kinematic_viscosity = 0;
+    double youngs_modulus = 0;
     double poisson_ratio = 0.3;
-    double yield_strength = 0;       // Pa
-    double thermal_expansion = 0;    // 1/K
-    double thermal_conductivity = 0; // W/(m·K)
-    double specific_heat = 0;        // J/(kg·K)
-
-    // Electromagnetic
-    double electrical_conductivity = 0; // S/m
+    double yield_strength = 0;
+    double thermal_expansion = 0;
+    double thermal_conductivity = 0;
+    double specific_heat = 0;
+    double electrical_conductivity = 0;
     double relative_permittivity = 1.0;
     double relative_permeability = 1.0;
 
     void compute_derived() {
-        if (density > 0)
-            kinematic_viscosity = dynamic_viscosity / density;
+        if (density > 0) kinematic_viscosity = dynamic_viscosity / density;
     }
 };
 
-/// Built-in material database
 class MaterialDatabase {
+    std::unordered_map<std::string, MaterialProperties> materials_;
+
+    void add(MaterialProperties m) { m.compute_derived(); materials_[m.name] = m; }
+
 public:
-    MaterialDatabase() { load_defaults(); }
+    MaterialDatabase() {
+        MaterialProperties air;
+        air.name = "Air"; air.type = MaterialType::Fluid;
+        air.density = 1.225; air.dynamic_viscosity = 1.81e-5;
+        add(air);
+
+        MaterialProperties water;
+        water.name = "Water"; water.type = MaterialType::Fluid;
+        water.density = 1000.0; water.dynamic_viscosity = 0.001;
+        add(water);
+
+        MaterialProperties al;
+        al.name = "Aluminum 6061"; al.type = MaterialType::Solid;
+        al.density = 2700; al.youngs_modulus = 68.9e9; al.poisson_ratio = 0.33;
+        al.yield_strength = 276e6; al.thermal_expansion = 23.1e-6;
+        al.thermal_conductivity = 167; al.specific_heat = 896;
+        add(al);
+
+        MaterialProperties steel;
+        steel.name = "Steel A36"; steel.type = MaterialType::Solid;
+        steel.density = 7850; steel.youngs_modulus = 200e9; steel.poisson_ratio = 0.26;
+        steel.yield_strength = 250e6; steel.thermal_expansion = 11.7e-6;
+        steel.thermal_conductivity = 50; steel.specific_heat = 480;
+        add(steel);
+
+        MaterialProperties cu;
+        cu.name = "Copper"; cu.type = MaterialType::Electromagnetic;
+        cu.density = 8960; cu.electrical_conductivity = 5.96e7;
+        cu.relative_permittivity = 1.0; cu.relative_permeability = 0.999994;
+        cu.thermal_conductivity = 401;
+        add(cu);
+    }
 
     const MaterialProperties* find(const std::string& name) const {
         auto it = materials_.find(name);
         return (it != materials_.end()) ? &it->second : nullptr;
-    }
-
-    void add(MaterialProperties mat) {
-        mat.compute_derived();
-        materials_[mat.name] = std::move(mat);
-    }
-
-    const auto& all() const { return materials_; }
-
-private:
-    std::unordered_map<std::string, MaterialProperties> materials_;
-
-    void load_defaults() {
-        add({"Air", MaterialType::Fluid, 1.225, 1.81e-5});
-        add({"Water", MaterialType::Fluid, 1000.0, 0.001});
-        add({"Aluminum 6061", MaterialType::Solid, 2700.0,
-             .youngs_modulus=68.9e9, .poisson_ratio=0.33, .yield_strength=276e6,
-             .thermal_expansion=23.1e-6, .thermal_conductivity=167, .specific_heat=896});
-        add({"Steel A36", MaterialType::Solid, 7850.0,
-             .youngs_modulus=200e9, .poisson_ratio=0.26, .yield_strength=250e6,
-             .thermal_expansion=11.7e-6, .thermal_conductivity=50, .specific_heat=480});
-        add({"Copper", MaterialType::Electromagnetic, 8960.0,
-             .electrical_conductivity=5.96e7, .relative_permittivity=1.0,
-             .relative_permeability=0.999994, .thermal_conductivity=401});
     }
 };
 
