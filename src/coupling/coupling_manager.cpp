@@ -1,3 +1,4 @@
+#include <vector>
 // Coupling manager — orchestrates data exchange between solvers.
 
 #include <string>
