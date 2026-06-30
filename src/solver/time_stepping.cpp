@@ -1,3 +1,4 @@
+#include <cstdint>
 // Time stepping: adaptive, CFL-based, and multi-rate stepping.
 
 #include <cstdio>

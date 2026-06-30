@@ -57,15 +57,15 @@ private:
     std::unordered_map<std::string, MaterialProperties> materials_;
 
     void load_defaults() {
-        add({"Air", MaterialType::Fluid, .density=1.225, .dynamic_viscosity=1.81e-5});
-        add({"Water", MaterialType::Fluid, .density=1000, .dynamic_viscosity=0.001});
-        add({"Aluminum 6061", MaterialType::Solid, .density=2700,
+        add({"Air", MaterialType::Fluid, 1.225, 1.81e-5});
+        add({"Water", MaterialType::Fluid, 1000.0, 0.001});
+        add({"Aluminum 6061", MaterialType::Solid, 2700.0,
              .youngs_modulus=68.9e9, .poisson_ratio=0.33, .yield_strength=276e6,
              .thermal_expansion=23.1e-6, .thermal_conductivity=167, .specific_heat=896});
-        add({"Steel A36", MaterialType::Solid, .density=7850,
+        add({"Steel A36", MaterialType::Solid, 7850.0,
              .youngs_modulus=200e9, .poisson_ratio=0.26, .yield_strength=250e6,
              .thermal_expansion=11.7e-6, .thermal_conductivity=50, .specific_heat=480});
-        add({"Copper", MaterialType::Electromagnetic, .density=8960,
+        add({"Copper", MaterialType::Electromagnetic, 8960.0,
              .electrical_conductivity=5.96e7, .relative_permittivity=1.0,
              .relative_permeability=0.999994, .thermal_conductivity=401});
     }
