@@ -6,8 +6,16 @@ project(extropian-physics VERSION 0.1.0 LANGUAGES CXX
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ── Dependencies ──────────────────────────────────────
-find_package(exd-core REQUIRED)
+# ── Dependencies: use FetchContent when not already available ──
+include(FetchContent)
+
+if(NOT TARGET exd::core)
+    FetchContent_Declare(exd-core
+        GIT_REPOSITORY https://github.com/wesleycramblitt/extropian-core.git
+        GIT_TAG main
+    )
+    FetchContent_MakeAvailable(exd-core)
+endif()
 find_package(Threads REQUIRED)  # For solver threading
 
 # ── Library target ────────────────────────────────────
