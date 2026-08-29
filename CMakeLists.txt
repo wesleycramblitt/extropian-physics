@@ -1,4 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
+
+# Allow fetched dependencies with old cmake_minimum_required() to configure
+# under CMake >= 4.0 without extra command-line flags.
+if(POLICY CMP0167)
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum policy version for fetched dependencies" FORCE)
+endif()
+
 project(extropian-physics VERSION 0.1.0 LANGUAGES CXX
     DESCRIPTION "Extropian Physics: mesh, fields, boundary conditions, solver plugin interface, coupling"
 )
@@ -16,6 +23,26 @@ if(NOT TARGET exd::core)
     )
     FetchContent_MakeAvailable(exd-core)
 endif()
+
+if(NOT TARGET exd::geometry)
+    if(DEFINED EXD_GEOMETRY_DIR)
+        FetchContent_Declare(exd-geometry SOURCE_DIR "${EXD_GEOMETRY_DIR}")
+    else()
+        FetchContent_Declare(exd-geometry
+            GIT_REPOSITORY https://github.com/wesleycramblitt/extropian-geometry.git
+            GIT_TAG main
+        )
+    endif()
+    if(DEFINED EXD_CORE_DIR)
+        FetchContent_Declare(exd-core SOURCE_DIR "${EXD_CORE_DIR}")
+    endif()
+    set(ENABLE_TEXT  OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTS  OFF CACHE BOOL "" FORCE)
+    set(BUILD_DEMO   OFF CACHE BOOL "" FORCE)
+    set(EXT_CORE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(exd-geometry)
+endif()
+
 find_package(Threads REQUIRED)  # For solver threading
 
 # ── Library target ────────────────────────────────────
@@ -56,10 +83,64 @@ add_library(exd-physics STATIC
     src/solver/solver_manager.cpp
     src/solver/time_stepping.cpp
     src/solver/convergence.cpp
+    src/solver/integrators.cpp
 
     # Coupling
     src/coupling/surface_mapping.cpp
     src/coupling/coupling_manager.cpp
+
+    # Level-3 BEM turbine solver
+    src/fluid/reduced_order/bem/bem_solver.cpp
+    src/fluid/reduced_order/bem/blade_geometry.cpp
+    src/fluid/reduced_order/bem/induction.cpp
+    src/fluid/reduced_order/bem/losses.cpp
+    src/fluid/reduced_order/bem/polar_db.cpp
+    src/fluid/reduced_order/bem/duct_flow.cpp
+    src/fluid/reduced_order/bem/hull_drag.cpp
+    src/fluid/reduced_order/bem/flow_field.cpp
+    src/fluid/reduced_order/bem/induction_corrections.cpp
+    src/fluid/reduced_order/bem/loss_corrections.cpp
+    # Level-1 FDM CFD solver
+    src/fluid/fdm/fdm_grid.cpp
+    src/fluid/fdm/fdm_spatial.cpp
+    src/fluid/fdm/fdm_integration.cpp
+    src/fluid/fdm/fdm_pressure.cpp
+    src/fluid/fdm/fdm_boundary.cpp
+    src/fluid/fdm/fdm_solver.cpp
+
+    # Generic mechanics (rigid-body rotational dynamics, moments, assembly)
+    src/mechanics/moment_integration.cpp
+    src/mechanics/moment_models.cpp
+    src/mechanics/rigid_dynamics.cpp
+    src/mechanics/rotating_assembly.cpp
+    src/mechanics/quaternion.cpp
+    src/mechanics/rigid_body.cpp
+
+    # Generic fluid force evaluation (FSI coupling point)
+    src/fluid/forces/blade_surface.cpp
+    src/fluid/forces/pressure_integration.cpp
+    src/fluid/forces/momentum_balance.cpp
+    src/fluid/forces/table_lookup.cpp
+    src/fluid/forces/force_evaluator.cpp
+
+    # Coupling field sampling (CFD field -> surface flow)
+    src/coupling/field_sampler.cpp
+    src/coupling/field_channels.cpp
+
+    # Turbine application assembly
+    src/turbine/turbine_simulator.cpp
+
+    # Thermo (EOS + properties)
+    src/thermo/eos.cpp
+    src/thermo/properties.cpp
+
+    # Control (PI/pitch/governor)
+    src/control/pi_controller.cpp
+
+    # Electrical (static fields, FDTD, lumped machines)
+    src/electrical/static_fields.cpp
+    src/electrical/fdtd.cpp
+    src/electrical/circuit.cpp
 )
 
 target_include_directories(exd-physics PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
@@ -67,6 +148,7 @@ target_include_directories(exd-physics PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_link_libraries(exd-physics PUBLIC
     exd::core
+    exd::geometry
     Threads::Threads
 )
 
