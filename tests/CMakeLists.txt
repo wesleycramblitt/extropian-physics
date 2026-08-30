@@ -38,6 +38,12 @@ add_physics_test(fdm_integration_test unit/fdm/fdm_integration_test.cpp)
 add_physics_test(fdm_pressure_test unit/fdm/fdm_pressure_test.cpp)
 add_physics_test(fdm_solver_test unit/fdm/fdm_solver_test.cpp)
 
+# 3D FDM CFD solver (fdm3) tests.
+add_physics_test(fdm3_grid_test unit/fdm3/fdm3_grid_test.cpp)
+add_physics_test(fdm3_pressure_test unit/fdm3/fdm3_pressure_test.cpp)
+add_physics_test(fdm3_solver_test unit/fdm3/fdm3_solver_test.cpp)
+add_physics_test(fdm3_body_force_test unit/fdm3/fdm3_body_force_test.cpp)
+
 # Shared integrators + time stepping (Phase A)
 add_physics_test(integrator_test unit/solver/integrator_test.cpp)
 add_physics_test(time_stepping_test unit/solver/time_stepping_test.cpp)
@@ -60,6 +66,7 @@ add_physics_test(field_sampler_test unit/coupling/field_sampler_test.cpp)
 
 # Turbine application assembly
 add_physics_test(turbine_simulator_test unit/turbine/turbine_simulator_test.cpp)
+add_physics_test(coupled_turbine_test unit/turbine/coupled_turbine_test.cpp)
 
 # Thermo + control (Phase C)
 add_physics_test(eos_test unit/thermo/eos_test.cpp)
@@ -72,3 +79,13 @@ add_physics_test(field_channels_test unit/coupling/field_channels_test.cpp)
 add_physics_test(static_fields_test unit/electrical/static_fields_test.cpp)
 add_physics_test(fdtd_test unit/electrical/fdtd_test.cpp)
 add_physics_test(circuit_test unit/electrical/circuit_test.cpp)
+
+# I/O output channel tests.
+add_physics_test(binary_fld_writer_test unit/io/binary_fld_writer_test.cpp)
+add_physics_test(csv_series_test unit/io/csv_series_test.cpp)
+add_physics_test(output_policy_test unit/io/output_policy_test.cpp)
+
+# Engine tests.
+add_physics_test(crank_mechanism_test unit/engine/crank_mechanism_test.cpp)
+add_physics_test(gas_force_test unit/engine/gas_force_test.cpp)
+add_physics_test(engine_simulator_test unit/engine/engine_simulator_test.cpp)

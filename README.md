@@ -122,7 +122,13 @@ auto r = opt.result();  // r.best_x has optimal turbine parameters
 
 ### Current status
 
-Phase 1 (CMake, taxonomy, geometry ingestion, polar database, induction/integration core, tests 1–3, 5) and Phase 2 (duct flow, hull drag, flow field, tests 4, 6–8, README/docs) are implemented.
+- BEM phases 1–3 (induction/loss correction models) implemented.
+- Modular stack (shared integrators, rigid bodies, thermo, control, electrical, turbine app, coupling field channels) implemented — see `docs/modular_solver_architecture.md`.
+- **`fluid::fdm3`** — 3D collocated SIMPLE solver (6-face BCs, SOR Poisson, body-force sources, persistent `FDM3Solver`, IFlowField3D adapter). Verified: uniform-flow preservation, 3D Poiseuille, Taylor–Green decay, fixed actuator disk vs momentum theory.
+- **`turbine::run_coupled_turbine`** — actuator-disk turbine-in-grid coupling (local blade-element forces, smeared negated body force, under-relaxation + ramp, spin-up soak matching reduced-order Cp within engineering tolerance).
+- **`engine`** — single-cylinder slider-crank: analytic kinematics with J_eq(θ) and the ½(dJ/dθ)ω² inertia torque, polytropic + Wiebe Otto cycle, steam placeholder (admission + n=1.13 polytrope), PI governor, CSV machine-state output (crank angle, piston x/v, p/T, torque, power over time).
+- **`io`** — real-time output channels: binary `exd-fld v1` field stamps + timeline manifest (`docs/output_channels.md`), CSV time series, wall-clock-throttled `OutputPolicy` for "real-time if specified". Contract ready for the animation/visualization repo.
+- Speed governor in `TurbineConfig` (PI load-fraction control).
 
 ## Architecture
 
@@ -151,6 +157,34 @@ class ISolverPlugin {
 ```
 
 Solver plugins are separate repos (`extropian-solver-fluidx3d`, `extropian-solver-openfoam`, etc.).
+
+## Quick usage sketches
+
+**Engine with CSV motion output (for animating the piston/crank in another repo):**
+
+```cpp
+#include <exd/physics/engine/engine_simulator.hpp>
+using namespace exd::physics::engine;
+exd::physics::ModelStatus status;
+EngineConfig cfg;                       // defaults: 4-stroke Otto, Wiebe heat release
+cfg.thermo.q_in_cycle = 1500.0;         // J per cycle
+cfg.initial_omega = 50.0;               // starter momentum
+cfg.csv_path = "engine_state.csv";      // time,theta,omega,piston_x,piston_v,p_cyl,...
+simulate_engine(cfg, status);
+```
+
+**Coupled turbine-in-grid (rotor inside the 3D FDM, fields streamable at a cadence):**
+
+```cpp
+#include <exd/physics/turbine/coupled_turbine.hpp>
+using namespace exd::physics::turbine;
+CoupledTurbineConfig c;
+c.grid = default_grid_config(10.0);     // Inlet at +z with w=−vInf, Outlet at −z
+c.turbine = my_turbine;                 // exd-geometry TurbineDefinition
+c.rotor_origin = {1.2, 1.2, 2.5};
+c.rotor_inertia = 100.0;
+auto r = run_coupled_turbine(c, status); // r.history: t, ω, θ, torque, power, exchanges
+```
 
 ## Building
 

@@ -395,3 +395,111 @@ TEST_CASE("simulate_turbine: a single step records exactly one history entry")
     REQUIRE(result.valid);
     CHECK(result.history.size() == 1U);
 }
+// ── Governor (Phase F.1 control wiring) ─────────────────
+
+TEST_CASE("simulate_turbine: governor regulates omega near a raised setpoint")
+{
+    // Small benign rotor (r_tip = 0.4, v_inf = 1): the BEM torque curve has
+    // a GENTLE slope (T ≈ ω^−0.7) in this TSR regime, so a load-fraction
+    // governor has real headroom — unlike the big fixture whose knife-edge
+    // torque (T ≈ ω^−7 near equilibrium) admits no u ∈ [0,1] operating
+    // point away from the natural balance.
+    auto small_turbine = []
+    {
+        TurbineDefinition t;
+        t.flow_path.hub_points = {{0.0f, 0.1f}, {1.0f, 0.1f}};
+        t.flow_path.shroud_points = {{0.0f, 0.4f}, {1.0f, 0.4f}};
+        BladeRow row;
+        row.type = BladeRowType::Rotor;
+        row.blade_count.value = 3.0f;
+        row.rotational_speed.value = 30.0f;
+        row.leading_edge_hub = {0.25f, 0.1f};
+        row.leading_edge_shroud = {0.25f, 0.4f};
+        row.trailing_edge_hub = {0.45f, 0.1f};
+        row.trailing_edge_shroud = {0.45f, 0.4f};
+        BladeSection s0;
+        s0.span = 0.0f;
+        s0.chord.value = 0.1f;
+        s0.stagger.value = -2.0f;
+        BladeSection s1 = s0;
+        s1.span = 1.0f;
+        row.sections = {s0, s1};
+        t.blade_rows = {row};
+        return t;
+    };
+    auto small_inflow = []
+    {
+        Freestream fs;
+        fs.velocity = {0.0, 0.0, -1.0};
+        fs.rho = 1.225;
+        fs.mu = 1.81e-5;
+        fs.p_ref = 101325.0;
+        return fs;
+    };
+    auto small_cfg = []
+    {
+        TurbineConfig cfg;
+        cfg.element_count = 16;
+        cfg.inertia = 0.02;
+        cfg.dt = 0.01;
+        cfg.max_steps = 8000;
+        cfg.force.type = ForceEvaluatorType::MomentumBalance;
+        return cfg;
+    };
+
+    // Reference equilibrium: gentle matched curve → settled ω1 with torque t1.
+    auto ref_cfg = small_cfg();
+    ref_cfg.generator.omega_pts = {0.0, 30.0};
+    ref_cfg.generator.torque_pts = {0.0, 0.02};
+    auto ref = simulate_turbine(small_turbine(), small_inflow(), ref_cfg);
+    REQUIRE(ref.valid);
+    const double w1 = ref.final_step.state.omega;
+    const double t1 = std::abs(ref.final_step.aero.torque);
+    REQUIRE(w1 > 0.0);
+    REQUIRE(t1 > 0.0);
+
+    // Governor run: setpoint 20% above ω1. T_aero(w_sp) ≈ t1·(w1/w_sp)^0.7;
+    // load curve sized so load(w_sp) = 2·T_aero(w_sp) → u* ≈ 0.5.
+    const double w_sp = 1.20 * w1;
+    const double t_aero_sp = t1 * std::pow(w1 / w_sp, 0.7);
+    auto cfg = small_cfg();
+    cfg.generator.omega_pts = {0.0, 2.0 * w_sp};
+    cfg.generator.torque_pts = {0.0, 4.0 * t_aero_sp}; // load(w_sp) = 2·t_aero_sp
+    cfg.governor.enabled = true;
+    cfg.governor.setpoint_omega = w_sp;
+    cfg.governor.pi.kp = 0.05;
+    cfg.governor.pi.ki = 0.2;
+    cfg.governor.pi.clamp_min = 0.0;
+    cfg.governor.pi.clamp_max = 1.0;
+    cfg.max_steps = 12000; // 120 s window (settles by ~100 s at these gains)
+
+    auto r = simulate_turbine(small_turbine(), small_inflow(), cfg);
+    REQUIRE(r.valid);
+    const double w_end = r.final_step.state.omega;
+
+    // Regulated: end omega near the raised setpoint, clearly above ω1.
+    CHECK(std::fabs(w_end - w_sp) / w_sp < 0.12);
+    CHECK(w_end > 1.05 * w1);
+    // Throttle mid-range (not clamped): the generator load is being scaled.
+    CHECK(r.final_step.throttle > 0.2);
+    CHECK(r.final_step.throttle < 0.85);
+    CHECK(std::isfinite(r.final_step.power));
+
+    // Batchability: same config twice → identical trajectory.
+    auto r2 = simulate_turbine(small_turbine(), small_inflow(), cfg);
+    REQUIRE(r2.valid);
+    CHECK(r2.final_step.state.omega == doctest::Approx(w_end).epsilon(1e-12));
+    CHECK(r2.history.size() == r.history.size());
+}
+
+TEST_CASE("simulate_turbine: governor config is inert when disabled")
+{
+    auto cfg = step_config();
+    cfg.governor.enabled = false; // default
+    cfg.governor.setpoint_omega = 123.0;
+    cfg.governor.pi.kp = 99.0; // would explode if consulted
+
+    auto result = simulate_turbine(make_turbine(), inflow(), cfg);
+    REQUIRE(result.valid);
+    CHECK(result.final_step.throttle == doctest::Approx(1.0).epsilon(1e-12));
+}

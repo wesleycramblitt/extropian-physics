@@ -228,7 +228,8 @@ mechanics::CurveMomentConfig make_generator_curve(double rated_power,
 TurbineStepResult step_turbine(mechanics::RotationalState& state,
                                const exd::geometry::TurbineDefinition& turbine,
                                const coupling::IFlowField3D& flow,
-                               const TurbineConfig& config)
+                               const TurbineConfig& config,
+                               control::IController* governor)
 {
     TurbineStepResult result;
     auto& status = result.status;
@@ -305,9 +306,30 @@ TurbineStepResult step_turbine(mechanics::RotationalState& state,
     // Generator load opposes rotation; an empty curve is a documented no-load.
     std::unique_ptr<mechanics::IMomentModel> load =
         mechanics::make_curve_moment(config.generator);
-    const double external = load->moment(state, status);
+    double external = load->moment(state, status);
     if (!status.ok)
         return result; // state unchanged
+
+    // Speed governor: exactly one update per step. Measurement is
+    // (setpoint − ω): positive when the rotor runs FAST → effort up →
+    // generator load fraction up → decelerates; below setpoint the
+    // fraction drops so the rotor accelerates. Clamped to [min, max].
+    double throttle = 1.0;
+    if (governor)
+    {
+        ModelStatus gst;
+        const double measurement = config.governor.setpoint_omega - state.omega;
+        throttle = governor->update(0.0, measurement, config.dt, gst);
+        if (!gst.ok)
+        {
+            status.ok = false;
+            status.error = "governor: " + gst.error;
+            return result; // state unchanged
+        }
+        throttle = std::clamp(throttle, config.governor.throttle_min,
+                              config.governor.throttle_max);
+        external *= throttle;
+    }
 
     const double omega_before = state.omega;
     const double net = moments.torque - external;
@@ -326,6 +348,7 @@ TurbineStepResult step_turbine(mechanics::RotationalState& state,
     result.aero = moments;
     result.external_moment = external;
     result.power = moments.torque * omega_before; // aero power (W)
+    result.throttle = throttle;
     result.per_element = std::move(per_element);
     return result;
 }
@@ -379,6 +402,11 @@ TurbineSimResult simulate_turbine(const exd::geometry::TurbineDefinition& turbin
         result.error = "config.element_count must be >= 4";
         return result;
     }
+    if (config.governor.enabled && config.generator.omega_pts.empty())
+    {
+        result.warnings.push_back(
+            "governor enabled with an empty generator curve: nothing to scale");
+    }
 
     coupling::UniformFieldConfig field_config;
     field_config.velocity = freestream.velocity;
@@ -388,6 +416,18 @@ TurbineSimResult simulate_turbine(const exd::geometry::TurbineDefinition& turbin
     std::unique_ptr<coupling::IFlowField3D> field =
         coupling::make_uniform_field(field_config);
 
+    // Governor (optional): PI state lives here, one update per step.
+    std::unique_ptr<control::IController> governor;
+    if (config.governor.enabled)
+    {
+        governor = control::make_pi_controller(config.governor.pi);
+        if (!governor)
+        {
+            result.error = "invalid governor config (PI)";
+            return result;
+        }
+    }
+
     mechanics::RotationalState state{config.initial_omega, 0.0};
 
     TurbineStepResult final_step{};
@@ -396,7 +436,8 @@ TurbineSimResult simulate_turbine(const exd::geometry::TurbineDefinition& turbin
 
     for (int step = 0; step < config.max_steps; ++step)
     {
-        TurbineStepResult step_result = step_turbine(state, turbine, *field, config);
+        TurbineStepResult step_result =
+            step_turbine(state, turbine, *field, config, governor.get());
         result.warnings.insert(result.warnings.end(),
                                step_result.status.warnings.begin(),
                                step_result.status.warnings.end());

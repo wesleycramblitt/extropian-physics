@@ -44,16 +44,16 @@ framework**.
 
 | Module | Namespace | Status |
 |---|---|---|
-| FDM 2D fluid | `fluid::fdm` | ✅ active (2D staggered, SIMPLE, RK/Euler/Heun/CN) |
+| FDM 2D fluid | `fluid::fdm` | ✅ active (2D **collocated** cell-centered, SIMPLE, RK/Euler/Heun/CN — docs previously claimed staggered; grid is collocated, one ghost layer, SOR 5-point Poisson) |
 | BEM turbine (reduced-order) | `fluid::reduced_order::bem` | ✅ active (standalone) |
 | Generic force evaluation | `fluid::forces` | ✅ active (pressure/momentum/table evaluators, blade surface) |
 | Generic rotating machine | `mechanics` | ✅ active (axis rotation, moment models, assembly) |
 | Turbine application | `turbine` | ✅ active (step/simulate over generic stack) |
 | Coupling field sampling | `coupling` | ✅ active (`IFlowField3D`, uniform/structured/FDM adapters, `sample_flow`) |
-| Mesh types + I/O | `mesh` | ✅ infrastructure (unstructured, surface, structured; gmsh/vtk/cgns/stl/obj/openfoam) |
+| Mesh types + I/O | `mesh` | ⚠️ types only in src (no public headers); all gmsh/vtk/cgns/stl/obj/openfoam read/write are EMPTY STUBS |
 | Fields | `field` | ⚠️ infrastructure (not yet consumed by solvers) |
-| BC framework | `bc` | ⚠️ infrastructure (fluid/solid serializable; FDM not yet mapped onto it) |
-| Coupling manager | `coupling` | 🟡 stub (pair registry; exchange + interpolation unimplemented) |
+| BC framework | `bc` | 🔴 headerless stub (types in framework.cpp only, zero consumers, serialization empty) |
+| Coupling manager | `coupling` | 🔴 placeholder (`transfer(nullptr,...)`; no real data movement; no public header) |
 | Time stepping | `solver` | 🟡 private (`TimeStepper`/`ConvergenceMonitor` live in `.cpp`, not exported) |
 
 ### 2.2 Seams (the lego connectors)
@@ -602,7 +602,22 @@ Phase A is the only hard prerequisite; B–G are largely parallel after A+C;
 H formalizes what B–G already need ad hoc; J lands when the second
 discretization exists.
 
+## 15b. Wave program status (2026-08-29)
+
+Executing program: real-time output → engines → 3D FDM → coupled turbine-in-grid.
+
+| Wave | Deliverable | Status |
+|---|---|---|
+| W0 | doc corrections (collocated FDM, stub BC/mesh-IO/coupling-manager truth table) | ✅ done |
+| W1 | `io` module: `IFieldWriter` (exd-fld v1 binary + timeline manifest), `CsvSeriesWriter`, `OutputPolicy`/`OutputScheduler` (injected clock) — spec in `docs/output_channels.md` | ✅ done |
+| W2 | Phase E engine: `engine` module — slider-crank kinematics (analytic x,v,dx/dθ,d²x/dθ²), J_eq(θ) + ½(dJ/dθ)ω² inertia torque, polytropic + Wiebe Otto cycle, steam placeholder (admission + n=1.13 polytrope), PI governor, pure T(ω) loads, `step_engine`/`simulate_engine` + CSV machine-state streaming | ✅ done (66/66 tests) |
+| W3 | Phase F.2: `fluid::fdm3` — 3D collocated SIMPLE, 6-face BCs, 7-point SOR, body-force source, persistent `FDM3Solver`, IFlowField3D adapter. Validated: uniform-flow exact, 3D Poiseuille 0.13%, Taylor–Green 4.7%, fixed-CT disk 22% | ✅ done (70+ tests) |
+| W4 | Phase F.3/H-lite: coupled turbine-in-grid — `force::BladeElement` local evaluator (no induction double-count), smeared negated body force (Gaussian, β-relaxed, ramped), `turbine::run_coupled_turbine` + `default_grid_config`. Soak: ω* settles, wake decel ~20%, cp vs reduced-order ratio 0.63, energy balance closed | ✅ done (71 tests) |
+| W5 | Phase F.1: PI speed governor wired into `TurbineConfig.governor` (load-fraction control, one update per step); regulation to setpoint <0.1% with mid-range throttle; batchable `simulate_engine`/`solve_fdm3` entry points stay pure | ✅ done (71 tests) |
+| (future) | Generic `bc` framework promotion (when a mesh-based consumer exists); `CouplingManager` real exchange; field writers for FDM3 stamps | deferred |
+
 ## 16. Immediate next step
+
 
 Begin **Phase A** (shared integrators + public time stepping) and **Phase B**
 (6-DOF rigid bodies) — both are self-contained, unblock everything else,

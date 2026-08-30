@@ -17,6 +17,8 @@ std::unique_ptr<IForceEvaluator> make_momentum_balance_evaluator(
     const MomentumBalanceConfig& config, const PolarDatabase* polars);
 std::unique_ptr<IForceEvaluator> make_table_lookup_evaluator(
     const TableLookupConfig& config, const PolarDatabase* polars);
+std::unique_ptr<IForceEvaluator> make_blade_element_evaluator(
+    const BladeElementConfig& config, const PolarDatabase* polars);
 
 std::unique_ptr<IForceEvaluator> make_force_evaluator(const ForceEvaluatorParams& params,
                                                       mechanics::ModelStatus& /*status*/)
@@ -27,6 +29,8 @@ std::unique_ptr<IForceEvaluator> make_force_evaluator(const ForceEvaluatorParams
             return make_pressure_integration_evaluator(params.pressure);
         case ForceEvaluatorType::TableLookup:
             return make_table_lookup_evaluator(params.table, params.polars);
+        case ForceEvaluatorType::BladeElement:
+            return make_blade_element_evaluator(params.blade_element, params.polars);
         case ForceEvaluatorType::MomentumBalance:
         default:
             return make_momentum_balance_evaluator(params.momentum, params.polars);

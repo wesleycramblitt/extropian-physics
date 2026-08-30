@@ -51,6 +51,8 @@ enum class ForceEvaluatorType : uint8_t
     PressureIntegration, // integrate p·n + τ over the sampled surface (CFD-coupled)
     MomentumBalance,     // blade-element momentum balance, reduced-order (standalone)
     TableLookup,         // coefficient-based blade-element without momentum coupling
+    BladeElement,        // local blade-element from the sampled flow (CFD-coupled,
+                         // no induction solve — the flow field already contains it)
 };
 
 struct PressureIntegrationConfig
@@ -71,6 +73,13 @@ struct TableLookupConfig
     double tolerance = 1e-5;
 };
 
+/// Configuration for the local blade-element evaluator.
+/// Intentionally empty in v1: the variant has no tunable parameters — it
+/// unconditionally uses the mean of the sampled station velocities.
+struct BladeElementConfig
+{
+};
+
 /// Bundle of all force-evaluator options, dispatched by `type`.
 struct ForceEvaluatorParams
 {
@@ -78,7 +87,8 @@ struct ForceEvaluatorParams
     PressureIntegrationConfig pressure;
     MomentumBalanceConfig momentum;
     TableLookupConfig table;
-    const PolarDatabase* polars = nullptr; // for momentum/table models;
+    BladeElementConfig blade_element;
+    const PolarDatabase* polars = nullptr; // for momentum/table/blade_element models;
                                                 // nullptr → built-in polars
 };
 

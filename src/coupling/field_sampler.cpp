@@ -231,6 +231,98 @@ private:
     double p_ref_;
 };
 
+// ── Fdm3FieldAdapter ────────────────────────────────────────────────
+// Trilinear interpolation of the cell-centered fdm3 field.  Coordinates
+// follow the cell-center convention: x[i] = (i + 0.5) * dx, etc.  Queries
+// outside the cell-center extent report out of bounds.
+
+class Fdm3FieldAdapter final : public IFlowField3D
+{
+public:
+    Fdm3FieldAdapter(const fluid::fdm3::FDM3Solver& solver)
+        : field_(solver.field()),
+          rho_(solver.config().rho),
+          mu_(solver.config().mu)
+    {
+    }
+
+    bool sample(const std::array<double, 3>& p,
+                std::array<double, 3>& velocity_out,
+                double& pressure_out) const override
+    {
+        const int nx = field_.nx;
+        const int ny = field_.ny;
+        const int nz = field_.nz;
+        if (nx < 2 || ny < 2 || nz < 2)
+            return false;
+
+        const double px = p[0];
+        const double py = p[1];
+        const double pz = p[2];
+        if (px < field_.x.front() || px > field_.x.back() ||
+            py < field_.y.front() || py > field_.y.back() ||
+            pz < field_.z.front() || pz > field_.z.back())
+            return false;
+
+        // Bracket i so x[i] <= px <= x[i+1]; clamp on the last node.
+        auto ix = std::lower_bound(field_.x.begin(), field_.x.end(), px);
+        std::size_t i = static_cast<std::size_t>(ix - field_.x.begin());
+        i = std::min(i, static_cast<std::size_t>(nx - 2));
+        auto iy = std::lower_bound(field_.y.begin(), field_.y.end(), py);
+        std::size_t j = static_cast<std::size_t>(iy - field_.y.begin());
+        j = std::min(j, static_cast<std::size_t>(ny - 2));
+        auto iz = std::lower_bound(field_.z.begin(), field_.z.end(), pz);
+        std::size_t k = static_cast<std::size_t>(iz - field_.z.begin());
+        k = std::min(k, static_cast<std::size_t>(nz - 2));
+
+        const double dx = field_.x[i + 1] - field_.x[i];
+        const double dy = field_.y[j + 1] - field_.y[j];
+        const double dz = field_.z[k + 1] - field_.z[k];
+        if (dx <= 0.0 || dy <= 0.0 || dz <= 0.0)
+            return false;
+
+        const double fx = (px - field_.x[i]) / dx;
+        const double fy = (py - field_.y[j]) / dy;
+        const double fz = (pz - field_.z[k]) / dz;
+
+        const int i0 = static_cast<int>(i);
+        const int j0 = static_cast<int>(j);
+        const int k0 = static_cast<int>(k);
+        const std::size_t i000 = field_.index(i0, j0, k0);
+        const std::size_t i100 = field_.index(i0 + 1, j0, k0);
+        const std::size_t i010 = field_.index(i0, j0 + 1, k0);
+        const std::size_t i110 = field_.index(i0 + 1, j0 + 1, k0);
+        const std::size_t i001 = field_.index(i0, j0, k0 + 1);
+        const std::size_t i101 = field_.index(i0 + 1, j0, k0 + 1);
+        const std::size_t i011 = field_.index(i0, j0 + 1, k0 + 1);
+        const std::size_t i111 = field_.index(i0 + 1, j0 + 1, k0 + 1);
+
+        const auto interp = [&](const std::vector<double>& values) -> double {
+            const double c00 = values[i000] * (1.0 - fx) + values[i100] * fx;
+            const double c10 = values[i010] * (1.0 - fx) + values[i110] * fx;
+            const double c01 = values[i001] * (1.0 - fx) + values[i101] * fx;
+            const double c11 = values[i011] * (1.0 - fx) + values[i111] * fx;
+            const double c0 = c00 * (1.0 - fy) + c10 * fy;
+            const double c1 = c01 * (1.0 - fy) + c11 * fy;
+            return c0 * (1.0 - fz) + c1 * fz;
+        };
+
+        velocity_out[0] = interp(field_.u);
+        velocity_out[1] = interp(field_.v);
+        velocity_out[2] = interp(field_.w);
+        pressure_out = interp(field_.p);
+        return true;
+    }
+
+    double density() const override { return rho_; }
+    double viscosity() const override { return mu_; }
+
+private:
+    fluid::fdm3::FDM3FieldData field_;
+    double rho_;
+    double mu_;
+};
+
 } // namespace
 
 // ── Factory functions ─────────────────────────────────────────────
@@ -270,6 +362,11 @@ std::unique_ptr<IFlowField3D> make_fdm_field_adapter(const fluid::fdm::FDMFieldD
                                                      double rho, double mu, double p_ref)
 {
     return std::make_unique<FdmFieldAdapter>(field, rho, mu, p_ref);
+}
+
+std::unique_ptr<IFlowField3D> make_fdm3_field_adapter(const fluid::fdm3::FDM3Solver& solver)
+{
+    return std::make_unique<Fdm3FieldAdapter>(solver);
 }
 
 // ── Surface sampling ──────────────────────────────────────────────

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <exd/geometry/turbine.hpp>
+#include <exd/physics/control/controller.hpp>
 #include <exd/physics/coupling/field_sampler.hpp>
 #include <exd/physics/fluid/forces/force_evaluator.hpp>
 #include <exd/physics/fluid/forces/flow_types.hpp>
@@ -44,6 +45,21 @@ struct TurbineConfig
     // Generator / load: opposing torque vs ω curve. Empty = no load.
     mechanics::CurveMomentConfig generator;
 
+    // Speed governor (optional): PI scales the generator load fraction u
+    // ∈ [throttle_min, throttle_max] so the rotor tracks setpoint_omega.
+    // Semantics: u = PI(setpoint=0, measurement = setpoint_omega − ω):
+    // above setpoint → more load → decelerate; below → less load.
+    // Requires a non-empty generator curve to act on (warning otherwise).
+    struct TurbineGovernorConfig
+    {
+        bool enabled = false;
+        double setpoint_omega = 0.0;         // rad/s
+        control::PiControllerConfig pi;      // gains per unit setup
+        double throttle_min = 0.0;
+        double throttle_max = 1.0;
+    };
+    TurbineGovernorConfig governor;
+
     // Drivetrain
     double inertia = 1000.0;          // kg·m² about the axis (> 0)
     mechanics::RotationalIntegration integration = mechanics::RotationalIntegration::Heun;
@@ -66,6 +82,7 @@ struct TurbineStepResult
     mechanics::MomentResult aero;     // torque about axis + thrust
     double external_moment = 0.0;     // opposing (N·m)
     double power = 0.0;               // aero torque · ω (W)
+    double throttle = 1.0;            // governor load fraction u ∈ [0,1]
     std::vector<mechanics::ElementForce3D> per_element;
 };
 
@@ -104,7 +121,8 @@ mechanics::CurveMomentConfig make_generator_curve(double rated_power,
 TurbineStepResult step_turbine(mechanics::RotationalState& state,
                                const exd::geometry::TurbineDefinition& turbine,
                                const coupling::IFlowField3D& flow,
-                               const TurbineConfig& config);
+                               const TurbineConfig& config,
+                               control::IController* governor = nullptr);
 
 /// Standalone simulation against a uniform freestream field.
 TurbineSimResult simulate_turbine(const exd::geometry::TurbineDefinition& turbine,

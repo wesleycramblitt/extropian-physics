@@ -108,6 +108,14 @@ add_library(exd-physics STATIC
     src/fluid/fdm/fdm_boundary.cpp
     src/fluid/fdm/fdm_solver.cpp
 
+    # Level-1 3D FDM CFD solver (fdm3)
+    src/fluid/fdm3/fdm3_grid.cpp
+    src/fluid/fdm3/fdm3_spatial.cpp
+    src/fluid/fdm3/fdm3_integration.cpp
+    src/fluid/fdm3/fdm3_pressure.cpp
+    src/fluid/fdm3/fdm3_boundary.cpp
+    src/fluid/fdm3/fdm3_solver.cpp
+
     # Generic mechanics (rigid-body rotational dynamics, moments, assembly)
     src/mechanics/moment_integration.cpp
     src/mechanics/moment_models.cpp
@@ -121,6 +129,7 @@ add_library(exd-physics STATIC
     src/fluid/forces/pressure_integration.cpp
     src/fluid/forces/momentum_balance.cpp
     src/fluid/forces/table_lookup.cpp
+    src/fluid/forces/blade_element.cpp
     src/fluid/forces/force_evaluator.cpp
 
     # Coupling field sampling (CFD field -> surface flow)
@@ -129,6 +138,7 @@ add_library(exd-physics STATIC
 
     # Turbine application assembly
     src/turbine/turbine_simulator.cpp
+    src/turbine/coupled_turbine.cpp
 
     # Thermo (EOS + properties)
     src/thermo/eos.cpp
@@ -141,6 +151,28 @@ add_library(exd-physics STATIC
     src/electrical/static_fields.cpp
     src/electrical/fdtd.cpp
     src/electrical/circuit.cpp
+
+    # Engine application (slider-crank + cycle + governor)
+    src/engine/crank_mechanism.cpp
+    src/engine/gas_force.cpp
+    src/engine/engine_simulator.cpp
+
+    # I/O output channels (field stamps, CSV machine-state series)
+    src/io/field_writer.cpp
+    src/io/csv_series.cpp
+)
+
+# The fdm3 kernels are hot loops over (nx+2)(ny+2)(nz+2) cells; compile
+# them optimized even in developer builds (default CMAKE_BUILD_TYPE is
+# intentionally empty in this repo).
+set_source_files_properties(
+    src/fluid/fdm3/fdm3_grid.cpp
+    src/fluid/fdm3/fdm3_spatial.cpp
+    src/fluid/fdm3/fdm3_integration.cpp
+    src/fluid/fdm3/fdm3_pressure.cpp
+    src/fluid/fdm3/fdm3_boundary.cpp
+    src/fluid/fdm3/fdm3_solver.cpp
+    PROPERTIES COMPILE_OPTIONS "-O2"
 )
 
 target_include_directories(exd-physics PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")

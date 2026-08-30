@@ -3,6 +3,7 @@
 #include <exd/physics/fluid/forces/force_evaluator.hpp>
 #include <exd/physics/fluid/forces/flow_types.hpp>
 #include <exd/physics/fluid/fdm/fdm_result.hpp>
+#include <exd/physics/fluid/fdm3/fdm3_solver.hpp>
 
 #include <array>
 #include <cstdint>
@@ -59,6 +60,11 @@ std::unique_ptr<IFlowField3D> make_structured_grid_field(const StructuredGridCon
 /// vz = 0). Lets the current 2D FDM CFD solver feed the 3D pipeline.
 std::unique_ptr<IFlowField3D> make_fdm_field_adapter(const fluid::fdm::FDMFieldData& field,
                                                      double rho, double mu, double p_ref);
+
+/// Adapter that samples a 3D FDM (fdm3) field using trilinear
+/// interpolation with the cell-center convention
+/// (x[i] = (i + 0.5) * dx, etc.).  Out-of-bounds queries return false.
+std::unique_ptr<IFlowField3D> make_fdm3_field_adapter(const fluid::fdm3::FDM3Solver& solver);
 
 /// Sample a flow field onto surface arrays → SurfaceFlow for evaluators.
 /// Shear traction is left zero (no wall model here).
