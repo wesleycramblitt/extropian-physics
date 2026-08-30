@@ -52,6 +52,9 @@ extropian-physics/
 │   ├── material/                 Material database
 │   ├── solver/                   Solver manager, time stepping, convergence
 │   ├── coupling/                 Coupling manager + surface mapping
+│   ├── io/                       Output channels (field stamps, CSV series)
+│   ├── fluid/fdm3/               3D FDM solver (the coupled-CFD reference)
+│   ├── engine/                   Slider-crank engines (Otto + steam)
 │   └── fluid/reduced_order/bem/  BEM solver (the reference implementation)
 ├── tests/unit/                   doctest-based unit tests
 ├── docs/                         Architecture docs + this agent guide
@@ -103,6 +106,10 @@ exd::physics::fluid::reduced_order::bem
 
 Future domains: `exd::physics::thermal`, `exd::physics::structural`,
 `exd::physics::electromagnetics`.
+
+Reference docs per module: `fdm3_architecture.md`, `engine_architecture.md`,
+`turbine_coupling_architecture.md`, `io_architecture.md`,
+`output_channels.md`, `capability_matrix.md`.
 
 **Rule:** Namespace nesting mirrors directory nesting. A file at
 `src/foo/bar/baz.cpp` should use namespace `exd::physics::foo::bar`.

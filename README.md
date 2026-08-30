@@ -1,33 +1,84 @@
 # extropian-physics
 
-**Simulation physics library: data model, interfaces, and engineering solvers.**
+**Simulation physics library: data model, interfaces, and real solvers.**
 
-Contains the mesh data structures, field types, boundary condition framework, material database, solver plugin interface, multiphysics coupling, and a growing set of reduced-order physics models. High-fidelity solver implementations live in separate `extropian-solver-*` repos.
+A C++23 static library implementing real multiphysics solvers with a
+pluggable coupling architecture: a 3D incompressible fluid solver, a
+coupled turbine-in-grid (wind *and* water), slider-crank engines
+(combustion and steam), reduced-order blade-element models, machine
+mechanics, thermo/EOS, control, electrical, and real-time output channels.
+High-fidelity external solvers (FluidX3D, OpenFOAM, CalculiX…) implement
+`ISolverPlugin` in separate `extropian-solver-*` repos.
 
 Depends on `extropian-core` and `extropian-geometry`.
 
-## Category taxonomy
+**Where to start**
+
+- Capability overview per system (what runs today, fidelity, exact config): [`docs/capability_matrix.md`](docs/capability_matrix.md)
+- Run recipes (turbine, engine, standalone CFD): [`docs/real_run_guide.md`](docs/real_run_guide.md)
+- Output contract for the animation/visualization repo: [`docs/output_channels.md`](docs/output_channels.md)
+- Whole-system roadmap (phases A–J): [`docs/modular_solver_architecture.md`](docs/modular_solver_architecture.md)
+
+## Module map
 
 ```
 include/exd/physics/ and src/
-├── fluid/                      ← fluid domain
-│   ├── cfd/                    ← future: fvm/, fem/, lbm/
-│   └── reduced_order/          ← analytical / engineering solvers
-│       ├── bem/                ← Level-3 duct/hull-coupled BEM turbine solver
-│       ├── actuator_disk/      ← future
-│       ├── vortex/             ← future
-│       └── potential_flow/     ← future
-├── thermal/                    ← future
-├── structural/                 ← future
-├── electromagnetics/           ← future
-└── shared/                     ← mesh/, field/, bc/, material/, solver/, coupling/
+├── fluid/
+│   ├── fdm/                   2D incompressible FDM (legacy, untouched)
+│   ├── fdm3/                  3D incompressible FDM — SIMPLE, SOR, 6-face BCs,
+│   │                          body-force sources, persistent FDM3Solver
+│   │                          [docs/fdm3_architecture.md]
+│   ├── forces/                blade surfaces + force evaluators:
+│   │                          PressureIntegration, MomentumBalance (BEM),
+│   │                          TableLookup, BladeElement (local, coupled)
+│   └── reduced_order/bem/     Level-3 duct/hull-coupled BEM turbine solver
+│                              [docs/bem_level3_architecture.md]
+├── turbine/                   turbine app: step/simulate over the generic
+│   │                          stack, parametric builder, coupled turbine-in-grid
+│   │                          driver [docs/turbine_coupling_architecture.md]
+├── engine/                    slider-crank engines: Otto (Wiebe) + steam
+│   │                          (Rankine-lite), governor, CSV motion output
+│   │                          [docs/engine_architecture.md]
+├── mechanics/                 1-DOF rotors, 6-DOF rigid bodies, moment models,
+│   │                          quaternions, rotating assemblies
+├── thermo/                    EOS (ideal gas), Sutherland viscosity, steam
+│   │                          saturation model
+├── control/                   PI controller (anti-windup)
+├── electrical/                static EF/MF (SOR Poisson), 3D FDTD, DC motor
+├── coupling/                  field channels (IFlowField3D, vector/scalar),
+│   │                          samplers, structured-grid adapters
+├── io/                        output channels: exd-fld v1 field stamps,
+│   │                          CSV time series, cadence policy
+│   │                          [docs/io_architecture.md]
+├── solver/                    plugin interface, SolverManager, shared
+│   │                          integrators (8 methods), time stepping
+├── mesh/ field/ bc/ material/ data-model infrastructure (mesh I/O stubs —
+│                              real structured/FVM/FEM meshing is Phase J)
+├── tools/                     (removed — no demo executables; runs are
+│                              caller programs, see real_run_guide)
 ```
 
-Shared infrastructure (`mesh`, `field`, `bc`, `material`, `solver`, `coupling`) stays at the top level of the library and is consumed by every domain.
+Every domain follows the repo doctrine: typed config/result structs,
+`ModelStatus` error channels (no exceptions), strategy+factory for pluggable
+models, value-type results, deterministic and optimizer-batchable entry
+points. Conventions: [`docs/agent_guide.md`](docs/agent_guide.md).
 
-## Level-3 BEM turbine solver
+## Capability summary (details: capability_matrix.md)
 
-A single-rotor, axisymmetric Blade-Element/Momentum solver in `exd::physics::fluid::reduced_order::bem`.
+| System | Run entry | Fidelity |
+|---|---|---|
+| Wind turbine | `turbine::run_coupled_turbine` (3D FDM + blade-element + generator + governor) | real incompressible CFD coupling |
+| Water turbine | same, `rho=1025, mu=1.08e-3` (hydro, proven) | same |
+| Combustion engine | `engine::simulate_engine` (Otto, Wiebe) | real 0D/1D cycle |
+| Steam engine | `engine::simulate_engine` (Rankine-lite) | real 0D/1D cycle + saturation EOS |
+| Standalone 3D CFD | `fluid::fdm3::solve_fdm3` / `run_fdm3_simulation` | incompressible FDM |
+| Reduced-order turbine | `bem::solve_turbine` | BEM + corrections |
+
+## Level-3 BEM turbine solver (reduced-order)
+
+A single-rotor, axisymmetric Blade-Element/Momentum solver in
+`exd::physics::fluid::reduced_order::bem` — the standalone fast model used
+for design-space sweeps, initialization, and reduced-order Cp reference.
 
 ```cpp
 #include <exd/geometry/turbine.hpp>
@@ -50,102 +101,16 @@ cond.rho   = 1.225;
 TurbineResult result = solve_turbine(turbine, cond, polars, config);
 ```
 
-The solver returns rotor torque/thrust/power, Cp/Ct, radial loading, hull drag with a viscous/pressure split, and an engineering-approximate axial velocity/pressure field.
-
-### Correction models
-
-The solver supports pluggable induction and loss correction models via `BEMSolverConfig`:
-
-```cpp
-BEMSolverConfig config;
-config.induction_correction = InductionCorrection::GlauertIterative;  // or Standard, Snel
-config.loss_correction = LossCorrection::DuSelig;                     // or Prandtl, Chaviaropoulos
-```
-
-| Model | Type | Description |
-|-------|------|-------------|
-| `Standard` | Induction | Buhl closed-form (default) |
-| `GlauertIterative` | Induction | Iterative Glauert empirical correction |
-| `Snel` | Induction | Exponential blending, smooth transition |
-| `Prandtl` | Loss | Classic Prandtl tip/hub loss (default) |
-| `DuSelig` | Loss | Du-Selig (1993) modified tip loss |
-| `Chaviaropoulos` | Loss | Chaviaropoulos-Hansen (2000) loading-dependent loss |
-
-3×3 = 9 possible model combinations. See `docs/bem_level3_architecture.md` §15.
-
-### Optimizer integration
-
-The BEM solver integrates with [extropian-optimization](https://github.com/wesleycramblitt/extropian-optimization) via its stepper API:
-
-```cpp
-#include <exd/opt/opt.hpp>
-#include <exd/physics/fluid/reduced_order/bem/bem_solver.hpp>
-
-using namespace exd::opt;
-using namespace exd::physics::fluid::reduced_order::bem;
-
-Problem p;
-p.variables = {
-    Variable{0.01, 0.5},    // chord (m)
-    Variable{-5.0, 15.0},   // twist offset (deg)
-    Variable{100.0, 2000.0} // RPM
-};
-p.directions = {Direction::Maximize};
-
-OptimizeOptions o;
-o.max_evaluations = 5000;
-o.seed = 42;
-
-Optimizer opt(p, Algo::CMAES, o);
-while (opt.running()) {
-    auto batch = opt.request_batch();
-    if (batch.empty()) break;
-    std::vector<Evaluation> evals;
-    for (const auto& x : batch) {
-        auto eng = to_engineering(p, x);
-        // Modify TurbineDefinition with eng[0], eng[1], eng[2]
-        TurbineResult result = solve_turbine(turbine, cond, polars, config);
-        evals.push_back({{-result.rotor.cp}, {}, result.valid});
-    }
-    opt.submit_results(std::move(evals));
-}
-auto r = opt.result();  // r.best_x has optimal turbine parameters
-```
-
-### Engineering-estimate caveats
-
-- **Duct model**: `M_duct = 1 + K_duct·(A_u/A_r − 1)` is a one-dimensional area-ratio acceleration estimate, not a panel or CFD solve.
-- **Wake model**: Gaussian wake deficit spreading downstream; the far wake does not recover to freestream inside the grid.
-- **Pressure field**: Bernoulli pressure plus the per-element momentum pressure jump; total pressure is not conserved downstream. This is **not a CFD pressure solution**.
-- **Chord**: approximated by the meridional distance `|TE − LE|`, mirroring `exd-geometry`.
-- **Polars**: the built-in NACA tables are synthetic engineering approximations and must be replaced with XFoil or wind-tunnel data for real studies.
-
-### Current status
-
-- BEM phases 1–3 (induction/loss correction models) implemented.
-- Modular stack (shared integrators, rigid bodies, thermo, control, electrical, turbine app, coupling field channels) implemented — see `docs/modular_solver_architecture.md`.
-- **`fluid::fdm3`** — 3D collocated SIMPLE solver (6-face BCs, SOR Poisson, body-force sources, persistent `FDM3Solver`, IFlowField3D adapter). Verified: uniform-flow preservation, 3D Poiseuille, Taylor–Green decay, fixed actuator disk vs momentum theory.
-- **`turbine::run_coupled_turbine`** — actuator-disk turbine-in-grid coupling (local blade-element forces, smeared negated body force, under-relaxation + ramp, spin-up soak matching reduced-order Cp within engineering tolerance).
-- **`engine`** — single-cylinder slider-crank: analytic kinematics with J_eq(θ) and the ½(dJ/dθ)ω² inertia torque, polytropic + Wiebe Otto cycle, PI governor, CSV machine-state output (crank angle, piston x/v, p/T, torque, power over time). Steam variant is Rankine-lite: Clausius–Clapeyron saturation EOS (`thermo::steam`), saturated admission with cutoff, wet-steam polytrope expansion, boiler-heat efficiency accounting.
-- **Capability matrix** — wind/water turbine, combustion engine, steam engine: what runs, at what fidelity, and the exact configuration — `docs/capability_matrix.md`.
-- **`io`** — real-time output channels: binary `exd-fld v1` field stamps + timeline manifest (`docs/output_channels.md`), CSV time series, wall-clock-throttled `OutputPolicy` for "real-time if specified". Contract ready for the animation/visualization repo.
-- Speed governor in `TurbineConfig` (PI load-fraction control).
-
-## Architecture
-
-```
-ext::physics::
-├── mesh/          Unstructured volume, surface, structured meshes + I/O
-├── field/         Scalar, vector, tensor fields + interpolation
-├── bc/            Boundary condition types + serialization
-├── material/      Material property database
-├── solver/        ISolverPlugin interface + manager + time stepping
-└── coupling/      Surface mapping, coupling orchestration
-```
+Returns rotor torque/thrust/power, Cp/Ct, radial loading, hull drag with a
+viscous/pressure split, and an engineering-approximate axial
+velocity/pressure field. Correction models: induction
+(Standard/Buhl, GlauertIterative, Snel) × loss (Prandtl, DuSelig,
+Chaviaropoulos). Engineering-estimate caveats are documented in
+`docs/bem_level3_architecture.md`.
 
 ## ISolverPlugin
 
-The central interface. Every solver (FluidX3D, OpenFOAM, CalculiX, Elmer, etc.) implements this:
+The central interface for external high-fidelity solvers:
 
 ```cpp
 class ISolverPlugin {
@@ -157,54 +122,26 @@ class ISolverPlugin {
 };
 ```
 
-Solver plugins are separate repos (`extropian-solver-fluidx3d`, `extropian-solver-openfoam`, etc.).
-
-## Quick usage sketches
-
-**Engine with CSV motion output (for animating the piston/crank in another repo):**
-
-```cpp
-#include <exd/physics/engine/engine_simulator.hpp>
-using namespace exd::physics::engine;
-exd::physics::ModelStatus status;
-EngineConfig cfg;                       // defaults: 4-stroke Otto, Wiebe heat release
-cfg.thermo.q_in_cycle = 1500.0;         // J per cycle
-cfg.initial_omega = 50.0;               // starter momentum
-cfg.csv_path = "engine_state.csv";      // time,theta,omega,piston_x,piston_v,p_cyl,...
-simulate_engine(cfg, status);
-```
-
-**Coupled turbine-in-grid (rotor inside the 3D FDM, fields streamable at a cadence):**
-
-```cpp
-#include <exd/physics/turbine/coupled_turbine.hpp>
-using namespace exd::physics::turbine;
-CoupledTurbineConfig c;
-c.grid = default_grid_config(10.0);     // Inlet at +z with w=−vInf, Outlet at −z
-c.turbine = my_turbine;                 // exd-geometry TurbineDefinition
-c.rotor_origin = {1.2, 1.2, 2.5};
-c.rotor_inertia = 100.0;
-auto r = run_coupled_turbine(c, status); // r.history: t, ω, θ, torque, power, exchanges
-```
+Solver plugins are separate repos (`extropian-solver-fluidx3d`, etc.).
 
 ## Building
 
 ```bash
-cmake -S . -B build -G Ninja
+cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON
 cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-To build tests with local dependency overrides:
+Local dependency overrides:
 
 ```bash
 cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON \
     -DEXD_GEOMETRY_DIR=/path/to/extropian-geometry \
     -DEXD_CORE_DIR=/path/to/extropian-core
-cmake --build build
-ctest --test-dir build
 ```
 
-Requires: `extropian-core`, `extropian-geometry`.
+Requires: CMake 3.21+, C++23, `extropian-core`, `extropian-geometry`.
+74 unit tests (doctest) — the full suite runs in ~1 min.
 
 ## License
 

@@ -55,6 +55,11 @@ framework**.
 | BC framework | `bc` | 🔴 headerless stub (types in framework.cpp only, zero consumers, serialization empty) |
 | Coupling manager | `coupling` | 🔴 placeholder (`transfer(nullptr,...)`; no real data movement; no public header) |
 | Time stepping | `solver` | 🟡 private (`TimeStepper`/`ConvergenceMonitor` live in `.cpp`, not exported) |
+| FDM 3D fluid | `fluid::fdm3` | ✅ active (collocated SIMPLE, 7-point SOR, 6-face BCs, body forces, persistent `FDM3Solver`) |
+| Engine app | `engine` | ✅ active (Otto Wiebe + steam Rankine-lite, governor, CSV motion output) |
+| Output channels | `io` | ✅ active (exd-fld v1 stamps + timeline, CSV series, cadence policy) |
+| Turbine app coupled | `turbine::run_coupled_turbine` | ✅ active (actuator-disk in fdm3, BladeElement forces, soak-verified) |
+| Steam EOS | `thermo` | ✅ active (Clausius–Clapeyron saturation; swap to IF97 tables later) |
 
 ### 2.2 Seams (the lego connectors)
 
