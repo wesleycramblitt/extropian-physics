@@ -69,8 +69,9 @@ struct EngineSimResult
     double cycles_completed = 0.0;
     double mean_throttle = 1.0;          // time-mean governor heat fraction;
                                          // efficiency uses throttled heat
-    double efficiency_estimate = 0.0;    // Otto only: W_ind/(q_in·cycles·mean_throttle);
-                                         // 0 for steam (boiler heat not modeled)
+    double efficiency_estimate = 0.0;    // W_ind / heat released: Otto →
+                                         // q_in rollup; steam → boiler heat
+                                         // m·(h_g − h_f) per cycle (Rankine-lite)
     std::vector<EngineStepResult> history;
 };
 

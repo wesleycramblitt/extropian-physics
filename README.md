@@ -126,7 +126,8 @@ auto r = opt.result();  // r.best_x has optimal turbine parameters
 - Modular stack (shared integrators, rigid bodies, thermo, control, electrical, turbine app, coupling field channels) implemented — see `docs/modular_solver_architecture.md`.
 - **`fluid::fdm3`** — 3D collocated SIMPLE solver (6-face BCs, SOR Poisson, body-force sources, persistent `FDM3Solver`, IFlowField3D adapter). Verified: uniform-flow preservation, 3D Poiseuille, Taylor–Green decay, fixed actuator disk vs momentum theory.
 - **`turbine::run_coupled_turbine`** — actuator-disk turbine-in-grid coupling (local blade-element forces, smeared negated body force, under-relaxation + ramp, spin-up soak matching reduced-order Cp within engineering tolerance).
-- **`engine`** — single-cylinder slider-crank: analytic kinematics with J_eq(θ) and the ½(dJ/dθ)ω² inertia torque, polytropic + Wiebe Otto cycle, steam placeholder (admission + n=1.13 polytrope), PI governor, CSV machine-state output (crank angle, piston x/v, p/T, torque, power over time).
+- **`engine`** — single-cylinder slider-crank: analytic kinematics with J_eq(θ) and the ½(dJ/dθ)ω² inertia torque, polytropic + Wiebe Otto cycle, PI governor, CSV machine-state output (crank angle, piston x/v, p/T, torque, power over time). Steam variant is Rankine-lite: Clausius–Clapeyron saturation EOS (`thermo::steam`), saturated admission with cutoff, wet-steam polytrope expansion, boiler-heat efficiency accounting.
+- **Capability matrix** — wind/water turbine, combustion engine, steam engine: what runs, at what fidelity, and the exact configuration — `docs/capability_matrix.md`.
 - **`io`** — real-time output channels: binary `exd-fld v1` field stamps + timeline manifest (`docs/output_channels.md`), CSV time series, wall-clock-throttled `OutputPolicy` for "real-time if specified". Contract ready for the animation/visualization repo.
 - Speed governor in `TurbineConfig` (PI load-fraction control).
 
@@ -185,20 +186,6 @@ c.rotor_origin = {1.2, 1.2, 2.5};
 c.rotor_inertia = 100.0;
 auto r = run_coupled_turbine(c, status); // r.history: t, ω, θ, torque, power, exchanges
 ```
-
-## Real runs
-
-```bash
-cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON
-cmake --build build -j
-./build/demo_engine
-./build/demo_coupled_turbine out
-```
-
-`demo_engine` streams engine kinematics CSV; `demo_coupled_turbine` runs a
-parametric rotor inside the 3D FDM and writes binary field stamps + timeline
-+ rotor CSV. Full recipes, builder parameters, and the parsing contract:
-`docs/real_run_guide.md` and `docs/output_channels.md`.
 
 ## Building
 

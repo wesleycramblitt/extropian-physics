@@ -200,14 +200,6 @@ add_library(exd::physics ALIAS exd-physics)
 # ── Tests ─────────────────────────────────────────────
 option(EXT_PHYSICS_BUILD_TESTS "Build tests" OFF)
 
-option(EXT_PHYSICS_BUILD_DEMOS "Build demo executables" ON)
-if(EXT_PHYSICS_BUILD_DEMOS)
-    add_executable(demo_coupled_turbine tools/demo_coupled_turbine.cpp)
-    target_link_libraries(demo_coupled_turbine PRIVATE exd-physics)
-    add_executable(demo_engine tools/demo_engine.cpp)
-    target_link_libraries(demo_engine PRIVATE exd-physics)
-endif()
-
 if(EXT_PHYSICS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)

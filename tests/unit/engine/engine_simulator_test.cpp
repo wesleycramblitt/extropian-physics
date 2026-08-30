@@ -271,3 +271,61 @@ TEST_CASE("engine: invalid configs fail cleanly")
     auto r4 = simulate_engine(bad4, status);
     CHECK_FALSE(r4.valid);
 }
+
+TEST_CASE("engine: steam cycle reports saturation temperatures and Rankine-lite efficiency")
+{
+    auto cfg = base_config();
+    cfg.thermo.cycle = EngineCycleType::Steam;
+    cfg.thermo.p_boiler = 800000.0;
+    cfg.thermo.p_condenser = 15000.0;
+    cfg.thermo.steam_cutoff_deg = 40.0;
+    cfg.thermo.steam_gamma = 1.13;
+    cfg.thermo.steam_quality_cutoff = 0.95;
+    cfg.thermo.r_gas = 461.5;
+    cfg.initial_omega = 20.0;
+    cfg.dt = 2.0e-4;
+    cfg.max_steps = 20000;
+    cfg.load.friction_constant = 0.1;
+
+    ModelStatus status;
+    auto r = simulate_engine(cfg, status);
+    REQUIRE(r.valid);
+    CHECK(r.final_step.state.omega > 0.0);
+    CHECK(r.cycles_completed > 0.0);
+    CHECK(all_finite(r));
+
+    // Admission temperature sits on the saturation line at the boiler
+    // pressure (wet steam, x = 0.95 < 1): T = T_sat(800 kPa).
+    const double t_sat_b = 1.0 / (1.0 / 373.15
+                                  - (461.5 / 2.257e6) * std::log(800000.0 / 101325.0));
+    bool saw_admission = false;
+    for (const auto& h : r.history)
+    {
+        const double deg = std::fmod(h.state.theta_rad, 2.0 * 3.141592653589793)
+                           * 180.0 / 3.141592653589793;
+        if (deg > 6.0 && deg < 38.0) // mid-admission, post-ramp
+        {
+            CHECK(std::fabs(h.T_cyl - t_sat_b) / t_sat_b < 5e-3);
+            saw_admission = true;
+        }
+    }
+    CHECK(saw_admission);
+
+    // Energy accounting: efficiency = W/(boiler heat) lands in a plausible
+    // simple-engine band (well below the Carnot/Rankine ideal for this
+    // condenser pressure, above zero).
+    CHECK(r.efficiency_estimate > 0.01);
+    CHECK(r.efficiency_estimate < 0.45);
+    CHECK(r.total_indicated_work > 0.0);
+}
+
+TEST_CASE("engine: steam quality validation")
+{
+    auto cfg = base_config();
+    cfg.thermo.cycle = EngineCycleType::Steam;
+    cfg.thermo.steam_quality_cutoff = 1.5; // > 1
+    ModelStatus status;
+    auto r = simulate_engine(cfg, status);
+    CHECK_FALSE(r.valid);
+    CHECK(r.error.find("steam_quality_cutoff") != std::string::npos);
+}

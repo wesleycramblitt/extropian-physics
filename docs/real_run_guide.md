@@ -5,22 +5,7 @@ Companion to `docs/output_channels.md` (the parsing contract).
 
 ---
 
-## 1. Two runnable demos (fastest path)
-
-```bash
-cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON
-cmake --build build -j
-./build/demo_engine                # → output/engine_state.csv
-./build/demo_coupled_turbine out   # → out/turbine_field/*.fld + timeline.txt
-                                   #   and out/turbine_rotor.csv
-```
-
-- `demo_engine` — governed 4-stroke Otto: crank angle, omega, piston x/v,
-  p/T, torque, power per step.
-- `demo_coupled_turbine` — parametric rotor inside the 3D FDM:
-  velocity/pressure field stamps + rotor machine-state CSV.
-
-## 2. Rolling your own run (what the demos do)
+## 1. Rolling your own run
 
 ### Turbine + 3D CFD with fields
 
@@ -58,7 +43,7 @@ auto r = exd::physics::turbine::run_coupled_turbine(c, status);
 // r.final_omega/cp/tsr; r.aero_work/rotor_ke_change/load_work
 ```
 
-### Engine with motion output
+## 3. Engine with motion output
 
 ```cpp
 #include <exd/physics/engine/engine_simulator.hpp>
@@ -73,7 +58,7 @@ auto r = exd::physics::engine::simulate_engine(cfg, status);
 //      indicated_moment_Nm,load_moment_Nm,power_W,throttle,cycles
 ```
 
-### Standalone 3D CFD case with fields
+## 4. Standalone 3D CFD case with fields
 
 ```cpp
 #include <exd/physics/fluid/fdm3/fdm3_solver.hpp>
@@ -83,7 +68,7 @@ auto r = exd::physics::fluid::fdm3::run_fdm3_simulation(cfg, writer, &sched, &st
 // equivalent to solve_fdm3(config) (pure, optimizer-batchable)
 ```
 
-## 3. What you get back
+## 5. What you get back
 
 | Output | Location | Contents |
 |---|---|---|
@@ -95,7 +80,7 @@ auto r = exd::physics::fluid::fdm3::run_fdm3_simulation(cfg, writer, &sched, &st
 Parse spec: `docs/output_channels.md`. The animation repo needs only a
 ~150-line exd-fld reader (fixed header, raw float32 payloads, little-endian).
 
-## 4. Notes for real use
+## 6. Notes for real use
 
 - **Grid size**: 20³–40³ boxes run in seconds on one core; 48³+ gets
   minutes-per-run. `sor_omega = 1.5–1.7` and warm-started pressure help.

@@ -443,3 +443,44 @@ TEST_CASE("coupled: rotor CSV streams one row per fluid step")
     CHECK(header_ok);
     CHECK(rows == static_cast<int>(cfg.max_steps) + 1); // header + per-step rows
 }
+
+// ── Water turbine capability (Wave 8) ──────────────────────────────
+
+TEST_CASE("coupled: water turbine (hydro) runs with seawater properties")
+{
+    // Same capability as the wind case — only the working fluid changes:
+    // seawater rho/mu, current speed. The full stack (3D FDM field, BCs,
+    // blade-element coupling, rotor dynamics) is fluid-agnostic.
+    auto cfg = base_config();
+    const double v_cur = 2.0;
+    cfg.grid = default_grid_config(v_cur, 16, 3.0, 4.0);
+    cfg.grid.rho = 1025.0;       // seawater (kg/m³)
+    cfg.grid.mu = 1.08e-3;       // seawater dynamic viscosity (Pa·s)
+    cfg.rotor_origin = {1.2, 1.2, 1.2};
+    cfg.dt = 0.0;                // grid dt (CFL-based)
+    cfg.fluid_steps_per_exchange = 10;
+    cfg.force_relaxation = 0.4;
+    cfg.ramp_time_s = 4.0; // >= 10·window (window = 10 steps × 0.019 s)
+    cfg.max_steps = 600;
+    // Aero torque scales with ρ: the load curve AND the rotor inertia must
+    // scale with the fluid density to land at the same ω transient as air.
+    // (Physical: a water turbine's rotor inertia and braking torque are
+    //  ~ρ_w/ρ_a ≈ 837× those of an equal-size air rotor.)
+    const double rho_ratio = 1025.0 / 1.225;
+    cfg.rotor_inertia = 0.02 * rho_ratio;
+    cfg.generator.omega_pts = {0.0, 5.0, 10.0, 15.0, 20.0};
+    cfg.generator.torque_pts = {0.0, 0.004 * rho_ratio, 0.009 * rho_ratio,
+                                0.012 * rho_ratio, 0.012 * rho_ratio};
+
+    ModelStatus status;
+    auto r = run_coupled_turbine(cfg, status);
+    REQUIRE(r.valid);
+
+    CHECK(r.final_omega > 0.0);
+    CHECK(r.final_tsr > 0.0);
+    CHECK(r.final_cp > 0.0);
+    CHECK(r.final_cp < 16.0 / 27.0 + 1e-6); // Betz bound
+    CHECK(r.exchanges > 5U);
+    for (const auto& h : r.history)
+        CHECK(std::isfinite(h.omega));
+}

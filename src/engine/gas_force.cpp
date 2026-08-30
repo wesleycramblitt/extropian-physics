@@ -23,6 +23,8 @@
 
 #include "engine_internal.hpp"
 
+#include <exd/physics/thermo/steam.hpp>
+
 #include <cmath>
 
 namespace exd::physics::engine {
@@ -103,8 +105,30 @@ void cylinder_state(double theta,
         }
         p_cyl = p;
 
-        const double m = t.p_boiler * v_cut / (t.r_gas * t.T_intake);
-        T_cyl = p * cylinder_volume(theta, g) / (m * t.r_gas);
+        // ── Steam temperature: saturation-based when wet ──
+        // Dryness fraction during expansion follows the standard
+        // wet-polytrope approximation x = x_cut·(V_cut/V)^(n−1); while
+        // x < 1 the cylinder gas sits on the saturation line (T = T_sat(p)),
+        // above it (superheated) the ideal-gas law applies with the trapped
+        // mass m = ρ_g(p_b, T_sat(p_b))·V_cut·x_cut.
+        const double x = deg >= t.steam_cutoff_deg && deg < 180.0
+            ? t.steam_quality_cutoff
+                  * std::pow(v_cut / cylinder_volume(theta, g), t.steam_gamma - 1.0)
+            : deg < t.steam_cutoff_deg ? t.steam_quality_cutoff
+                                       : t.steam_quality_cutoff
+                                             * std::pow(v_cut / cylinder_volume(PI, g),
+                                                        t.steam_gamma - 1.0);
+        if (x < 1.0)
+        {
+            T_cyl = thermo::saturation_temperature(p);
+        }
+        else
+        {
+            const double t_sat_b = thermo::saturation_temperature(t.p_boiler);
+            const double m = thermo::rho_g(t.p_boiler, t_sat_b) * v_cut
+                             * t.steam_quality_cutoff;
+            T_cyl = p * cylinder_volume(theta, g) / (m * t.r_gas);
+        }
         return;
     }
 

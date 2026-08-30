@@ -93,3 +93,6 @@ add_physics_test(engine_simulator_test unit/engine/engine_simulator_test.cpp)
 # Turbine builder + fdm3 stamping-driver tests (Wave 7).
 add_physics_test(turbine_builder_test unit/turbine/turbine_builder_test.cpp)
 add_physics_test(fdm3_output_driver_test unit/fdm3/fdm3_output_driver_test.cpp)
+
+# Steam properties + water turbine capability (Wave 8).
+add_physics_test(steam_test unit/thermo/steam_test.cpp)

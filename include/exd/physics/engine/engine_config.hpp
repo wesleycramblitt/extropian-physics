@@ -72,7 +72,10 @@ struct EngineThermoConfig
     double p_boiler = 800000.0;      // Pa admission pressure, > p_condenser
     double p_condenser = 15000.0;    // Pa exhaust pressure, > 0
     double steam_cutoff_deg = 40.0;  // ° admission cutoff, in (0, 180)
-    double steam_gamma = 1.13;       // saturated-steam polytrope placeholder
+    double steam_gamma = 1.13;       // wet-steam polytrope exponent (saturated
+                                     // steam ≈ 1.13; engineering model)
+    double steam_quality_cutoff = 0.95; // dryness fraction at cutoff, in (0,1]
+                                     // (0.95: slightly wet admission)
 };
 
 struct EngineLoadConfig

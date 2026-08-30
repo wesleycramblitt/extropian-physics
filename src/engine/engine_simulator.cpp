@@ -9,6 +9,7 @@
 #include <exd/physics/engine/engine_simulator.hpp>
 
 #include <exd/physics/io/series_writer.hpp>
+#include <exd/physics/thermo/steam.hpp>
 
 #include <cmath>
 #include <memory>
@@ -30,6 +31,11 @@ double clamp(double v, double lo, double hi)
 double cycle_period(const EngineConfig& config)
 {
     return config.thermo.cycle == EngineCycleType::Steam ? 2.0 * PI : 4.0 * PI;
+}
+
+double engine_volume_at_cutoff(const EngineConfig& config, double cutoff_deg)
+{
+    return cylinder_volume(cutoff_deg * (PI / 180.0), config.geometry);
 }
 
 double p_back_pressure(const EngineThermoConfig& t)
@@ -103,6 +109,8 @@ bool validate_engine_config(const EngineConfig& config,
         if (t.p_condenser <= 0.0) { error = "p_condenser must be > 0"; return false; }
         if (t.steam_cutoff_deg <= 0.0 || t.steam_cutoff_deg >= 180.0)
         { error = "steam_cutoff_deg must be in (0, 180)"; return false; }
+        if (!(t.steam_quality_cutoff > 0.0 && t.steam_quality_cutoff <= 1.0))
+        { error = "steam_quality_cutoff must be in (0, 1]"; return false; }
         if (t.steam_gamma <= 1.0) { error = "steam_gamma must be > 1"; return false; }
         if (config.governor.enabled)
         { warnings.push_back("governor ignored for steam cycles (fixed admission, placeholder model)"); }
@@ -272,6 +280,22 @@ EngineSimResult simulate_engine(const EngineConfig& config, ModelStatus& status)
         }
     }
 
+    // Steam boiler heat per cycle: raise the trapped mass from liquid at
+    // the condenser saturation temperature to saturated vapor at the boiler.
+    // m = ρ_g(p_b)·V_cut·x_cut. (Rankine-lite; documented engineering model.)
+    const double steam_heat_per_cycle = [&]
+    {
+        if (config.thermo.cycle != EngineCycleType::Steam) return 0.0;
+        const double t_sat_b = thermo::saturation_temperature(config.thermo.p_boiler);
+        const double t_sat_c = thermo::saturation_temperature(config.thermo.p_condenser);
+        const double m = thermo::rho_g(config.thermo.p_boiler, t_sat_b)
+                         * engine_volume_at_cutoff(config, config.thermo.steam_cutoff_deg)
+                         * config.thermo.steam_quality_cutoff;
+        const double h_g = thermo::h_g(t_sat_b);
+        const double h_f_c = thermo::h_f(t_sat_c);
+        return m * (h_g - h_f_c);
+    }();
+
     EngineState state{config.initial_theta_rad, config.initial_omega, 0};
     double t = 0.0;
     double total_work = 0.0;
@@ -301,10 +325,16 @@ EngineSimResult simulate_engine(const EngineConfig& config, ModelStatus& status)
         omega_sum += state.omega;
         ++omega_count;
         throttle_sum += r.throttle;
-        if (config.thermo.cycle == EngineCycleType::Otto)
         {
             const double dtheta = std::max(0.0, state.theta_rad - theta_before);
-            heat_sum += config.thermo.q_in_cycle * r.throttle * dtheta / (4.0 * PI);
+            if (config.thermo.cycle == EngineCycleType::Otto)
+            {
+                heat_sum += config.thermo.q_in_cycle * r.throttle * dtheta / (4.0 * PI);
+            }
+            else
+            {
+                heat_sum += steam_heat_per_cycle * dtheta / (2.0 * PI);
+            }
         }
 
         if (config.record_history && (step % config.history_interval == 0))
@@ -335,7 +365,7 @@ EngineSimResult simulate_engine(const EngineConfig& config, ModelStatus& status)
     result.cycles_completed = static_cast<double>(completed);
     result.mean_indicated_power = t > 0.0 ? total_work / t : 0.0;
     result.mean_throttle = omega_count > 0 ? throttle_sum / omega_count : 1.0;
-    if (config.thermo.cycle == EngineCycleType::Otto && heat_sum > 0.0)
+    if (heat_sum > 0.0)
         result.efficiency_estimate = total_work / heat_sum;
 
     return result;
