@@ -67,8 +67,10 @@ struct EngineSimResult
     double mean_indicated_power = 0.0;// W
     double mean_omega = 0.0;          // rad/s
     double cycles_completed = 0.0;
-    double efficiency_estimate = 0.0; // Otto only: W_ind/(q_in·cycles);
-                                      // 0 for steam (boiler heat not modeled)
+    double mean_throttle = 1.0;          // time-mean governor heat fraction;
+                                         // efficiency uses throttled heat
+    double efficiency_estimate = 0.0;    // Otto only: W_ind/(q_in·cycles·mean_throttle);
+                                         // 0 for steam (boiler heat not modeled)
     std::vector<EngineStepResult> history;
 };
 

@@ -9,6 +9,8 @@
 
 #include "fdm3_config.hpp"
 #include "fdm3_result.hpp"
+#include <exd/physics/io/field_writer.hpp>
+#include <exd/physics/io/output_policy.hpp>
 #include <exd/physics/model_status.hpp>
 
 #include <memory>
@@ -88,5 +90,15 @@ private:
 /// (honoring adaptive dt), records a history entry every step, and returns
 /// the result with a `converged` flag from the windowed residual checks.
 FDM3Result solve_fdm3(const FDM3Config& config);
+/// Driver: run the simulation AND stamp fields (velocity + pressure, exd-fld
+/// convention) at a cadence. `writer`/`scheduler` are non-owning; when
+/// `scheduler` is null the stamp interval falls back to
+/// `config.field_stamp_interval`. Without a writer this is equivalent to
+/// solve_fdm3() — solvers stay pure, drivers own the stamps.
+FDM3Result run_fdm3_simulation(const FDM3Config& config,
+                               io::IFieldWriter* writer = nullptr,
+                               io::OutputScheduler* scheduler = nullptr,
+                               ModelStatus* status = nullptr);
+
 
 } // namespace exd::physics::fluid::fdm3

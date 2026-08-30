@@ -418,3 +418,28 @@ TEST_CASE("coupled turbine: field writer emits stamps through the scheduler")
     // The first emphasized stamp (step 0 → step_00000001.fld) exists.
     CHECK(std::filesystem::exists(dir + "/step_00000001.fld"));
 }
+// ── Rotor machine-state CSV (Wave 7) ───────────────────────────────
+
+TEST_CASE("coupled: rotor CSV streams one row per fluid step")
+{
+    auto cfg = base_config();
+    cfg.max_steps = 220;
+    cfg.csv_path = std::filesystem::temp_directory_path().string()
+                   + "/coupled_rotor_" + std::to_string(::getpid()) + ".csv";
+    ModelStatus status;
+    auto r = run_coupled_turbine(cfg, status);
+    REQUIRE(r.valid);
+
+    std::ifstream f(cfg.csv_path);
+    REQUIRE(f.good());
+    std::string line;
+    int rows = 0;
+    bool header_ok = false;
+    while (std::getline(f, line))
+    {
+        if (rows == 0) header_ok = line.rfind("time,omega_rad_s", 0) == 0;
+        ++rows;
+    }
+    CHECK(header_ok);
+    CHECK(rows == static_cast<int>(cfg.max_steps) + 1); // header + per-step rows
+}

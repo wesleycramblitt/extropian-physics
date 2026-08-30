@@ -186,6 +186,20 @@ c.rotor_inertia = 100.0;
 auto r = run_coupled_turbine(c, status); // r.history: t, ω, θ, torque, power, exchanges
 ```
 
+## Real runs
+
+```bash
+cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON
+cmake --build build -j
+./build/demo_engine
+./build/demo_coupled_turbine out
+```
+
+`demo_engine` streams engine kinematics CSV; `demo_coupled_turbine` runs a
+parametric rotor inside the 3D FDM and writes binary field stamps + timeline
++ rotor CSV. Full recipes, builder parameters, and the parsing contract:
+`docs/real_run_guide.md` and `docs/output_channels.md`.
+
 ## Building
 
 ```bash

@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -54,6 +55,14 @@ CsvSeriesWriter::CsvSeriesWriter(std::string path,
             }
             return;
         }
+    }
+    // Create the parent directory when missing (real-run ergonomics:
+    // same behavior as the fld field writer).
+    const std::filesystem::path p(path);
+    if (p.has_parent_path() && !p.parent_path().empty())
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(p.parent_path(), ec);
     }
     impl_->file = std::fopen(path.c_str(), "w");
     if (!impl_->file)

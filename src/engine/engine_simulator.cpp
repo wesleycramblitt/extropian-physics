@@ -84,6 +84,13 @@ bool validate_engine_config(const EngineConfig& config,
     {
         if (t.gamma_compression <= 1.0 || t.gamma_expansion <= 1.0)
         { error = "gamma_compression/gamma_expansion must be > 1"; return false; }
+        if (std::fabs(t.gamma_expansion - t.gamma_compression) > 1e-9)
+        {
+            warnings.push_back(
+                "gamma_expansion != gamma_compression: the polytropic cycle does "
+                "net work per revolution with zero heat release (heat-transfer "
+                "stand-in). Keep them equal unless you model that transfer.");
+        }
         if (t.p_exhaust <= 0.0) { error = "p_exhaust must be > 0"; return false; }
         if (t.wiebe_ignition_deg < 0.0 || t.wiebe_ignition_deg >= 180.0)
         { error = "wiebe_ignition_deg must be in [0, 180)"; return false; }
@@ -270,6 +277,8 @@ EngineSimResult simulate_engine(const EngineConfig& config, ModelStatus& status)
     double total_work = 0.0;
     double omega_sum = 0.0;
     uint64_t omega_count = 0;
+    double throttle_sum = 0.0;
+    double heat_sum = 0.0;             // exact released heat: Σ q_in·u·Δθ/4π
     uint64_t completed = 0;
     bool failed = false;
     EngineStepResult last;
@@ -277,6 +286,7 @@ EngineSimResult simulate_engine(const EngineConfig& config, ModelStatus& status)
     for (uint64_t step = 0; step < config.max_steps && !failed; ++step)
     {
         const double w_before = state.omega;
+        const double theta_before = state.theta_rad;
         EngineStepResult r = step_engine(state, t, config, governor.get(), status);
         if (!r.ok || !status.ok)
         {
@@ -290,6 +300,12 @@ EngineSimResult simulate_engine(const EngineConfig& config, ModelStatus& status)
         last = r;
         omega_sum += state.omega;
         ++omega_count;
+        throttle_sum += r.throttle;
+        if (config.thermo.cycle == EngineCycleType::Otto)
+        {
+            const double dtheta = std::max(0.0, state.theta_rad - theta_before);
+            heat_sum += config.thermo.q_in_cycle * r.throttle * dtheta / (4.0 * PI);
+        }
 
         if (config.record_history && (step % config.history_interval == 0))
             result.history.push_back(r);
@@ -318,8 +334,9 @@ EngineSimResult simulate_engine(const EngineConfig& config, ModelStatus& status)
     result.mean_omega = omega_count > 0 ? omega_sum / static_cast<double>(omega_count) : 0.0;
     result.cycles_completed = static_cast<double>(completed);
     result.mean_indicated_power = t > 0.0 ? total_work / t : 0.0;
-    if (config.thermo.cycle == EngineCycleType::Otto && completed > 0)
-        result.efficiency_estimate = total_work / (config.thermo.q_in_cycle * completed);
+    result.mean_throttle = omega_count > 0 ? throttle_sum / omega_count : 1.0;
+    if (config.thermo.cycle == EngineCycleType::Otto && heat_sum > 0.0)
+        result.efficiency_estimate = total_work / heat_sum;
 
     return result;
 }

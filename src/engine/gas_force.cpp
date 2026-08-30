@@ -127,16 +127,22 @@ void cylinder_state(double theta,
     }
     else if (deg >= 0.0 && deg < 180.0)
     {
-        // Power: polytropic expansion + Wiebe heat-release pressure
+        // Power: polytropic expansion + Wiebe heat-release pressure.
+        // The heat is anchored at TDC volume and expands polytropically
+        // ((γ−1)·q·x_b/V_tdc · (V_tdc/V)^γe): a raw (γ−1)·q·x_b/V term
+        // decays ∝ 1/V and over-produces work beyond the Otto bound
+        // (measured η ≈ 0.55 vs the 0.489 limit at r_c = 6.8, γ = 1.35).
         p = p_tdc * std::pow(v_tdc / v, t.gamma_expansion);
         const double xb = wiebe_fraction(deg, t);
-        p += (t.gamma_expansion - 1.0) * t.q_in_cycle * xb / v;
+        p += (t.gamma_expansion - 1.0) * t.q_in_cycle * xb / v_tdc
+             * std::pow(v_tdc / v, t.gamma_expansion);
     }
     else if (deg >= 180.0 && deg < 180.0 + blend_window_deg())
     {
-        // Exhaust opening ramp: p_exp_end → p_exhaust
+        // Exhaust opening ramp: p_exp_end → p_exhaust (xb ≡ 1 here)
         const double p_end = p_tdc * std::pow(v_tdc / v_bdc, t.gamma_expansion)
-                             + (t.gamma_expansion - 1.0) * t.q_in_cycle / v_bdc; // xb ≡ 1 here
+                             + (t.gamma_expansion - 1.0) * t.q_in_cycle / v_tdc
+                                   * std::pow(v_tdc / v_bdc, t.gamma_expansion);
         const double f = smooth_blend((deg - 180.0) / blend_window_deg());
         p = p_end + f * (t.p_exhaust - p_end);
     }

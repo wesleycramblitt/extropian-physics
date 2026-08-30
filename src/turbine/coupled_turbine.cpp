@@ -22,6 +22,8 @@
 
 #include <exd/physics/turbine/coupled_turbine.hpp>
 
+#include <exd/physics/io/series_writer.hpp>
+
 #include <exd/physics/turbine/turbine_simulator.hpp>
 #include <exd/physics/coupling/field_sampler.hpp>
 #include <exd/physics/fluid/fdm3/fdm3_solver.hpp>
@@ -292,6 +294,23 @@ CoupledTurbineResult run_coupled_turbine(const CoupledTurbineConfig& cfg,
             return result;
         }
         merge_warnings(result, status, fstatus.warnings);
+    }
+
+    // ── Rotor machine-state CSV (optional; one flushed row per step) ──
+    std::unique_ptr<io::CsvSeriesWriter> csv;
+    if (!cfg.csv_path.empty())
+    {
+        csv = std::make_unique<io::CsvSeriesWriter>(
+            cfg.csv_path,
+            std::vector<std::string>{"omega_rad_s", "angle_rad", "torque_Nm",
+                                     "axial_force_N", "power_W", "exchange"},
+            true /* flush per row: real-time visible */, &status);
+        if (!status.ok)
+        {
+            result.valid = false;
+            result.error = status.error;
+            return result;
+        }
     }
 
     // Axis: rotor plane maps to grid z = rotor_origin[2]; the blade geometry's
@@ -593,6 +612,12 @@ CoupledTurbineResult run_coupled_turbine(const CoupledTurbineConfig& cfg,
             result.history.push_back(hs);
         }
 
+        // Rotor machine-state CSV (real-time: one flushed row per step).
+        if (csv) csv->write_row(t_now, std::vector<double>{state.omega, state.angle_rad,
+                                                           total_torque, total_axial,
+                                                           total_torque * state.omega,
+                                                           static_cast<double>(exchanges)});
+
         // Field stamping (drivers own writer stamps).
         if (cfg.field_writer)
         {
@@ -642,6 +667,8 @@ CoupledTurbineResult run_coupled_turbine(const CoupledTurbineConfig& cfg,
             }
         }
     }
+
+    if (csv) csv->close();
 
     // ── Final summary ────────────────────────────────────────────────
     result.fluid.valid = true;

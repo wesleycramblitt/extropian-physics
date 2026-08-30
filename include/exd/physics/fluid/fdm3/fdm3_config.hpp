@@ -118,7 +118,10 @@ struct FDM3Config {
     double initial_u = 0.0;     // Initial u-velocity (m/s)
     double initial_v = 0.0;     // Initial v-velocity (m/s)
     double initial_w = 0.0;     // Initial w-velocity (m/s)
-    double initial_p = 0.0;     // Initial pressure (Pa)
+    double initial_p = 0.0;
+
+    uint32_t field_stamp_interval = 100; // run_fdm3_simulation cadence when no
+                                         // OutputScheduler is supplied     // Initial pressure (Pa)
 
     // ── Derived ─────────────────────────────────
     double dx() const { return lx / static_cast<double>(nx); }

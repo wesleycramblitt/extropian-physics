@@ -62,6 +62,9 @@ struct CoupledTurbineConfig
     io::OutputScheduler* output_scheduler = nullptr; // non-owning; null → stamps
                                                         // every field_stamp_interval
     uint32_t field_stamp_interval = 100;            // used when output_scheduler is null
+
+    std::string csv_path;                            // rotor machine-state CSV;
+                                                     // empty = no CSV output
 };
 
 // ─────────────────────────────────────────────────────

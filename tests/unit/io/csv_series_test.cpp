@@ -82,6 +82,19 @@ TEST_CASE("csv series: invalid column names fail construction")
     CHECK_FALSE(status2.ok);
 }
 
+TEST_CASE("csv series: creates missing parent directories")
+{
+    // Real-run ergonomics: path may point into a not-yet-existing tree.
+    const std::string path = std::filesystem::temp_directory_path().string()
+                             + "/exd_csv_nested_" + std::to_string(::getpid())
+                             + "/sub/dir/series.csv";
+    CsvSeriesWriter w(path, {"a"}, false, nullptr);
+    REQUIRE(w);
+    CHECK(w.write_row(0.0, {1.0}));
+    w.close();
+    CHECK(read_all(path) == "time,a\n0,1\n");
+}
+
 TEST_CASE("csv series: vector<double> convenience overload")
 {
     const std::string path = temp_path("series3.csv");

@@ -330,4 +330,108 @@ FDM3Result solve_fdm3(const FDM3Config& config) {
     return result;
 }
 
+// ─────────────────────────────────────────────────────
+// Stamping driver (Wave 7: real runs with field output)
+// ─────────────────────────────────────────────────────
+
+FDM3Result run_fdm3_simulation(const FDM3Config& config,
+                               io::IFieldWriter* writer,
+                               io::OutputScheduler* scheduler,
+                               ModelStatus* status)
+{
+    FDM3Result result;
+
+    FDM3Solver solver;
+    {
+        std::string error;
+        if (!config.validate(error, result.warnings))
+        {
+            result.valid = false;
+            result.error = error;
+            if (status) *status = {false, error, result.warnings};
+            return result;
+        }
+        ModelStatus init_status;
+        if (!solver.initialize(config, init_status))
+        {
+            result.valid = false;
+            result.error = init_status.error;
+            result.warnings.insert(result.warnings.end(),
+                                   init_status.warnings.begin(),
+                                   init_status.warnings.end());
+            if (status) *status = init_status;
+            return result;
+        }
+    }
+
+    bool failed = false;
+    for (int step = 0; step < config.max_steps && !failed; ++step)
+    {
+        ModelStatus step_status;
+        if (!solver.step(config.dt, step_status))
+        {
+            failed = true;
+            result.error = step_status.error;
+            break;
+        }
+        if (writer)
+        {
+            bool emit = false;
+            if (scheduler)
+            {
+                scheduler->set_now(solver.time());
+                emit = scheduler->should_emit(static_cast<uint64_t>(step));
+            }
+            else
+            {
+                emit = config.field_stamp_interval > 0
+                       && (static_cast<uint64_t>(step) % config.field_stamp_interval == 0);
+            }
+            if (emit)
+            {
+                const auto& field = solver.field();
+                io::FieldGeometry geo;
+                geo.origin = {0.5 * config.dx(), 0.5 * config.dy(), 0.5 * config.dz()};
+                geo.spacing = {config.dx(), config.dy(), config.dz()};
+                geo.dims = {static_cast<uint32_t>(config.nx),
+                            static_cast<uint32_t>(config.ny),
+                            static_cast<uint32_t>(config.nz)};
+
+                const size_t n = static_cast<size_t>(config.nx) * config.ny * config.nz;
+                std::vector<float> vel(3 * n);
+                std::vector<float> pres(n);
+                for (size_t i = 0; i < n; ++i)
+                {
+                    vel[3 * i + 0] = static_cast<float>(field.u[i]);
+                    vel[3 * i + 1] = static_cast<float>(field.v[i]);
+                    vel[3 * i + 2] = static_cast<float>(field.w[i]);
+                    pres[i] = static_cast<float>(field.p[i]);
+                }
+                if (!writer->begin_stamp(solver.time(), static_cast<uint64_t>(step)))
+                {
+                    result.warnings.push_back("fdm3 driver: field stamp begin failed");
+                }
+                else
+                {
+                    writer->write_vector_field("velocity", geo, vel);
+                    writer->write_scalar_field("pressure", geo, pres);
+                    writer->end_stamp();
+                }
+            }
+        }
+    }
+
+    result.valid = !failed;
+    result.field = solver.field();
+    result.steps_taken = solver.step_count();
+    result.final_time = solver.time();
+    result.history = {solver.last_step()};
+    if (status)
+    {
+        status->ok = result.valid;
+        status->error = result.error;
+        status->warnings = result.warnings;
+    }
+    return result;
+}
 } // namespace exd::physics::fluid::fdm3

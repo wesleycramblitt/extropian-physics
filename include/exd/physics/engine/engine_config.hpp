@@ -56,7 +56,12 @@ struct EngineThermoConfig
 
     // Otto
     double gamma_compression = 1.35; // per-phase polytrope, > 1
-    double gamma_expansion = 1.30;   // > 1
+    double gamma_expansion = 1.35;   // > 1. NOTE: differing from
+                                     // gamma_compression injects net
+                                     // work per cycle with zero heat
+                                     // (a heat-transfer STAND-IN; keep
+                                     // equal for conservative motored
+                                     // behavior — validated with warning)
     double q_in_cycle = 1500.0;      // J heat release per cycle, ≥ 0
     double wiebe_ignition_deg = 0.0; // °ATDC start of combustion
     double wiebe_burn_duration_deg = 60.0; // °, > 0

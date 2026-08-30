@@ -89,3 +89,7 @@ add_physics_test(output_policy_test unit/io/output_policy_test.cpp)
 add_physics_test(crank_mechanism_test unit/engine/crank_mechanism_test.cpp)
 add_physics_test(gas_force_test unit/engine/gas_force_test.cpp)
 add_physics_test(engine_simulator_test unit/engine/engine_simulator_test.cpp)
+
+# Turbine builder + fdm3 stamping-driver tests (Wave 7).
+add_physics_test(turbine_builder_test unit/turbine/turbine_builder_test.cpp)
+add_physics_test(fdm3_output_driver_test unit/fdm3/fdm3_output_driver_test.cpp)
