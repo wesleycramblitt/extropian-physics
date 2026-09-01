@@ -1,4 +1,4 @@
-# Real Coupling Exchange (Phase H-lite) + Phase I Grid-first Domains (W10)
+# Real Coupling Exchange (Phase H-lite) + Phase I Grid-first Domains (W10–W11)
 
 Companion to `modular_solver_architecture.md` §11/§12. Product doctrine:
 80–90% engineering-grade accuracy, simple physics coupled together.

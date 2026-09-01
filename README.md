@@ -53,10 +53,15 @@ include/exd/physics/ and src/
 ├── electrical/                static EF/MF (SOR Poisson), 3D FDTD, DC motor
 ├── coupling/                  field channels (IFlowField3D, vector/scalar),
 │   │                          samplers, structured-grid adapters, REAL
-│   │                          CouplingManager + SurfaceMapper + CoupledSimulation
-│   │                          multi-rate driver [docs/coupling_and_grid_first_domains.md]
-├── thermal/ acoustics/        Phase I grid-first domains: steady conduction/
-│   │                          advection, leapfrog wave — IScalarField3D channels
+│   │                          CouplingManager (Jacobi-ordered exchange,
+│   │                          target read-back) + SurfaceMapper +
+│   │                          CoupledSimulation multi-rate driver
+│   │                          [docs/coupling_and_grid_first_domains.md]
+├── thermal/                  transient implicit conduction/advection with
+│   │                          velocity-channel transport (CHT-lite),
+│   │                          temperature/read channels — IScalarField3D
+├── acoustics/                 leapfrog wave + mean-flow (convected) wave —
+│   │                          IScalarField3D channels
 ├── structural/                linear elasticity (Navier–Cauchy displacement
 │   │                          SOR, thermal-strain channel) — IVectorField3D
 ├── particles/ chemistry/      Lagrangian tracking over channels; 0D mass-action
@@ -89,6 +94,10 @@ points. Conventions: [`docs/agent_guide.md`](docs/agent_guide.md).
 | Reduced-order turbine | `bem::solve_turbine` | BEM + corrections |
 | Compressor system | `fluid::turbomachinery::simulate_compression_system` (stage stack + plenum + DC motor + governor) | mean-line + Greitzer |
 | Turbocharger (balance) | acceptance test: compressor + turbine stages on one shaft | mean-line, one code path |
+| Coupled field domains | `coupling::CoupledSimulation` (manager + surface mapper + multi-rate driver), two-slab CHT on transient `thermal` | analytic fixed point (350 K interface, exact joined profile) |
+| Transient thermal (CHT-lite) | `thermal::simulate_thermal` (implicit, velocity-channel advection, read channel) | Fourier-series match 0.2%, effective-Péclet 0.3% |
+| Aeroacoustic-lite | `acoustics::simulate_wave` with uniform mean flow | c±u pulse arrival within 5% |
+| Grid-first domains | `thermal`/`acoustics`/`structural`/`particles`/`chemistry` — see rows above + capability_matrix | analytic-verified (W10, W11) |
 
 ## Level-3 BEM turbine solver (reduced-order)
 
@@ -157,7 +166,7 @@ cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON \
 ```
 
 Requires: CMake 3.21+, C++23, `extropian-core`, `extropian-geometry`.
-74 unit tests (doctest) — the full suite runs in ~1 min.
+88 unit tests (doctest) — the full suite runs in ~1 min.
 
 ## License
 

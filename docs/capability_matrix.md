@@ -103,5 +103,5 @@ Run: caller programs link `exd-physics`; coupling is configured in code
 - **Real-time output**: `OutputPolicy`/`OutputScheduler` with injected
   clock; binary field stamps + CSV streams (contract:
   `docs/output_channels.md`).
-- Verified by 74/74 unit tests including analytic anchors for every
-  physics model.
+- Verified by 88/88 unit tests including analytic anchors for every
+  physics model (W9: 80/80, W10: 87/87, W11: 88/88).

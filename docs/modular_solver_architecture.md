@@ -729,8 +729,11 @@ discretization exists.
 
 ## 15b. Wave program status (2026-08-29)
 
-Executed: real-time output → engines → 3D FDM → coupled turbine-in-grid → capability assurance (74/74).
-Next: W9 — turbomachinery generalization (Phase G re-scope).
+Executed through W11 (88/88 tests): real-time output → engines → 3D FDM →
+coupled turbine-in-grid → capability assurance → turbomachinery (W9) → real
+coupling + grid-first domains (W10) → cross-domain capability (W11: transient
+thermal/CHT-lite, mean-flow acoustics, Jacobi-ordered read-back coupling).
+Next per §16: CHT and aeroacoustics demos on `CoupledSimulation`.
 
 | Wave | Deliverable | Status |
 |---|---|---|
