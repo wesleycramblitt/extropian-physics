@@ -60,6 +60,9 @@ framework**.
 | Output channels | `io` | ✅ active (exd-fld v1 stamps + timeline, CSV series, cadence policy) |
 | Turbine app coupled | `turbine::run_coupled_turbine` | ✅ active (actuator-disk in fdm3, BladeElement forces, soak-verified) |
 | Steam EOS | `thermo` | ✅ active (Clausius–Clapeyron saturation; swap to IF97 tables later) |
+| Turbomachinery (planned) | `fluid::turbomachinery` | 🔲 W9: axial mean-line stage/stack, operating map, map lookup — §10 G.1 |
+| Plenum / 0D volumes (planned) | `fluid::lumped` | 🔲 W9: Greitzer plenum, generic gas-network node — §10 G.3 |
+| Polytropic processes (planned) | `thermo` | 🔲 W9: stagnation-polytrope primitives; engine volume-polytropes stay local — §10 G.2 |
 
 ### 2.2 Seams (the lego connectors)
 
@@ -72,7 +75,7 @@ framework**.
 | `ISolverPlugin` (initialize/step/get_field/get_coupling_surface) | external solver repos | `SolverManager`, `CouplingManager` | ✅ |
 | Field channels (vector/scalar field at points) | any domain (EM, thermal…) | cross-domain exchange | 🔲 generalize `IFlowField3D` when EM lands |
 | `IRigidBodyDynamics` (6-DOF) | mechanics | apps, contacts, FSI | 🔲 Phase B |
-| `IController` (PI/PID, pitch, governor) | control | turbine/engine/compressor apps | 🔲 Phase C |
+| `IController` (PI/PID, pitch, governor) | control | turbine/engine apps, compression systems | 🔲 Phase C |
 | `IEos` (equation of state) | thermo | engine/compressor/thermal | 🔲 Phase C |
 | `IFluidSolver` (method-switchable fluid step) | fdm + fvm | coupled runs | 🔲 Phase J (trigger: FVM exists) |
 
@@ -336,7 +339,7 @@ class IScalarField3D {   // temperature, concentration, potential φ…
 ```
 
 FDTD/static EM fields implement `IVectorField3D`/`IScalarField3D`; FDM
-thermal implements `IScalarField3D` (Phase G). Samplers (`sample_flow`,
+thermal implements `IScalarField3D` (Phase I). Samplers (`sample_flow`,
 `sample_scalar`) extend the pattern.
 
 ### D.2 Static EF/MF — fast win on the FDM grid
@@ -448,26 +451,137 @@ matches reduced-order cp within engineering tolerance.
 
 ---
 
-## 10. Phase G — Compressors
+## 10. Phase G — Turbomachinery generalization (compressor capability, product-agnostic)
 
-Application mirror-image of the turbine: work in, pressure out.
+Re-scoped (2026-08-31): **no `compressor` app module.** The compressor use
+case is met by general capabilities — the same mean-line turbomachinery
+physics covers axial compressors, axial turbines, fans, and (thermodynamic
+side of) rotors. Direction of work is **geometry-emergent, not a mode
+enum**: `Δh₀ = u·(c_w2 − c_w1)`; swirl added → compression (work into gas),
+swirl extracted → expansion (work out). Config validation warns on a
+"compressor" stage that produces expansion (inlet-swirl vs blade-angle
+mismatch).
 
-- `exd::physics::compressor` app: `RotatingAssembly` + **drive moment**
-  (motor/generator `IMomentModel` from Phase D) + aerodynamic loading
-  evaluator (a *pressure-rise* force model in `fluid::forces`, variant of
-  `MomentumBalance` — compressor sense: camber/stagger reversed, work
-  input; uses the same 3D emission) + `thermo::IEos` stage thermodynamics
-  (polytropic head, isentropic efficiency).
-- Surge/operating-line: performance map lookup (curve model already
-  exists — `CurveMoment`-style T(ω) + pressure-rise map).
-- Files: `src/compressor/compressor_simulator.cpp`,
-  `src/fluid/forces/compressor_work.cpp` (or fold into momentum evaluator
-  via a `sense` flag), tests: polytropic head analytic, motor-driven
-  spin-up to operating point, efficiency bounds.
+**Product doctrine (whole library):** target is *80–90% engineering-grade
+accuracy, simple physics coupled together, fast and easy to use*. Every
+module documents its validity envelope; no speculative unification; the
+measure of a model is that a caller knows where it is 80% and where it is
+wrong.
 
-**Definition of done:** compressor app simulates motor-driven pressure
-rise with EOS-consistent thermodynamics; reuses every generic module
-without modification.
+### G.1 `fluid::turbomachinery` — axial mean-line stage (namespace
+`exd::physics::fluid::turbomachinery`, `src/fluid/turbomachinery/`)
+
+- `stage.hpp/.cpp` — one axial stage at mean radius. **All stage relations
+  operate on TOTAL states (T0, p0)** (review C1: Euler work and the
+  polytropic exponent forms are total-state laws; static recovery via
+  absolute velocity incl. residual swirl; a static-path chain is an O(M²)
+  error, ~16% in π at M = 0.5):
+  `T02 = T01 + Δh₀/cp;` compression `π = (T02/T01)^(γ·η_p/(γ−1))`,
+  expansion `π = (T02/T01)^(γ/((γ−1)·η_p))`; then static T2, p2 from the
+  velocity field and `IEos`.
+  - `c_a = ṁ/(ρ·A)` solved by explicit density-velocity fixed-point
+    (3–8 scalar iterations, convergence guard → `ModelStatus` failure).
+  - **Choking keyed on relative Mach** at the rotor LE
+    `M_rel = √(c_a² + (c_θ1 − u)²)/a` (review M3): map sweep marks choked
+    points invalid rather than clipping interior behavior.
+  - Validity envelope (documented in header + doc): `M_rel < 0.7`,
+    hub/tip ratio > 0.5, single-stage π < ~1.5, axial-first (radial stages
+    are a later config'd variant, different loss correlations).
+  - Entry: `StageResult solve_stage(const StageConfig&, const StageInlet&,
+    double omega, double mdot, const thermo::IEos&, ModelStatus&)`.
+    `StageInlet{p0, T0, c_theta}`; **`StageResult{p0, T0, c_theta, static
+    p/T/rho, delta_h0, torque, power, pi, efficiencies, mach}`** — torque
+    `= ṁ·Δh₀/ω` and power are first-class (review M5: system energy
+    balances close on them).
+- `stage_stack.hpp/.cpp` — N stages, inter-stage propagation of
+  `(T0, p0, c_theta)` (residual swirl IS the next stage's inlet swirl —
+  review M4); total π = Ππᵢ; reheat effect physical. `solve_stage_stack`
+  pure entry, batchable.
+- `operating_map.hpp/.cpp` — `solve_operating_map(stack, inlet, sweep,
+  IEos, status)` sweeps ω × ṁ (dimensionless: corrected flow vs corrected
+  speed, so rig-test-supplied maps are directly compatible) → `OperatingMap`
+  (π/η/T surfaces, surge curve at dπ/dṁ = 0 per speed line — documented
+  surrogate, real surge lines come from rigs/CFD — and relative-Mach choke
+  curve). Vector grids are deliberate (config-size data, not hot path;
+  agent_guide §11.1 exception noted).
+- `map_lookup.hpp/.cpp` — `sample_operating_map(map, omega, mdot, status)`,
+  bilinear; consumes any `OperatingMap` — computed OR rig-test data (the
+  `TableLookup` variant pattern).
+
+### G.2 `thermo::polytropic` — stagnation-polytrope math primitives
+
+Public module `exd::physics::thermo` for the **stagnation** polytrope
+family only (`polytropic_exponent`, `temp_ratio`, `press_ratio`,
+efficiency relations). The engine's in-cylinder volume polytropes are
+**NOT migrated** (review M2): they are documented heat-transfer stand-ins
+on static p·Vⁿ and share only the word "polytropic" with total-state
+turbomachinery relations — unifying them would degrade both. Two families
+(volume vs stagnation) get a shared header only if a second consumer
+appears; both exported as separate named relation functions.
+
+### G.3 `fluid::lumped::plenum` — Greitzer 0D volume (namespace
+`exd::physics::fluid::lumped`, `src/fluid/lumped/plenum.cpp`)
+
+State `(p_plenum, ṁ_duct)`; plenum continuity + duct inertance
+`dṁ/dt = Δp/I`; `IEos` for density (adiabatic a² = γ·R·T stated in the
+header). Compressor/throttle characteristics injected as functions — the
+plenum is a generic gas-network node (engine manifolds, gas networks,
+HVAC later). **Stability verification uses the full two-state Jacobian**
+(review C2 — the naive slope comparison is wrong in the shallow-throttle
+regime): linearize, derive trace/det conditions weighted by the Greitzer
+B parameter, verify against an analytic `B_critical` case AND time-march
+the stable→limit-cycle transition with the Phase A integrator.
+
+### G.4 Thin system driver (DX, not an app)
+
+`simulate_compression_system(CompressionSystemConfig, ModelStatus&)` —
+~100 lines composing `RotatingAssembly` (compressor-sense provider:
+negative torque wrt +ω) + Phase D DC motor drive (motoring assist,
+negative = assisting) + plenum + optional PI governor (surge margin /
+speed), streaming CSV via `io::CsvSeriesWriter`. This is "easy to use +
+quick output products" for the capability; the turbocharger (turbine +
+compressor stages on one shaft) remains an **acceptance test** until
+Phase H formalizes multi-machine coupling.
+
+### G.5 Files, tests, verification
+
+- Files: `include/exd/physics/fluid/turbomachinery/{stage,stage_stack,
+  operating_map,map_lookup}.hpp`, `include/exd/physics/fluid/lumped/
+  plenum.hpp`, `include/exd/physics/thermo/polytropic.hpp` + matching
+  `src/` + `validate_*_config` per config (m1).
+- `IEos` gains `density(p, T)` and a `specific_entropy`/Δs helper
+  (review M1 — the seam is currently dormant infra; stage and entropy
+  checks need it); consumed as non-owning const ref.
+- Tests (analytic anchors, repo regime):
+  - polytropic: η_p = 1 → exact isentropic `p0₂/p0₁ = (T0₂/T0₁)^(γ/(γ−1))`;
+    Δs = cp·ln(T0₂/T0₁) − R·ln(p0₂/p0₁) > 0 for compression; Δh = cp·ΔT0.
+  - stage: exact Euler work/torque on synthetic triangles; zero-swirl →
+    Δh₀ = 0, π = 1; **full-closure reversal test** — reversed blade angles
+    give identical |Δh₀|, expansion exponent, T0₂ < T0₁, π < 1, Δs > 0 in
+    both senses (a reciprocal π_comp·π_turb = 1 check is NOT a test —
+    compressor and turbine polytropes are not reciprocals, review C3);
+    closed-form energy/kinetic/momentum closure at M_axial ≈ 0.4–0.5 vs a
+    hand computation.
+  - stack: single ≡ single; 2-stage reheat effect.
+  - map: echoes `solve_stage_stack` at nodes; surge line at dπ/dṁ = 0;
+    relative-Mach choke boundary; determinism pin.
+  - plenum: steady fixed point; Jacobian stability boundary both sides;
+    surge limit cycle; energy bookkeeping.
+  - system: motor-driven spin-up to operating point matching the steady
+    characteristic; turbocharger energy balance closed
+    (`Σ(τ_motor + τ_compressor)·ω·dt = ΔKE`; steady state
+    `motor_power ≈ compressor_power`); PI surge-margin setpoint tracking.
+
+**Field channels:** deliberately none (review M6). The compressor is a
+lumped machine model like the engine — no grid field to exchange;
+**compressible-grid coupling is an unowned future capability**, filed as
+its own roadmap item, not "Phase J".
+
+**Definition of done:** G.1–G.3 public with analytic verification;
+`simulate_compression_system` runs a motor-driven pressure rise with
+EOS-consistent thermodynamics and streams CSV; turbocharger + surge
+acceptance tests green; `docs/turbomachinery_architecture.md` written;
+roadmap/capability matrix updated; full suite green (74 + new).
 
 ---
 
@@ -596,7 +710,7 @@ Phase A  integrators + time stepping
    │      ├─→ Phase D  electrical/EM/FDTD   (uses A, C; channels generalize the fluid sampler)
    │      ├─→ Phase E  engines              (uses A, B, C, D)
    │      ├─→ Phase F  turbines + 3D FDM    (uses A, C, D)
-   │      └─→ Phase G  compressors          (uses A, C, D)
+   │      └─→ Phase G  turbomachinery generalization (uses A, C, D; re-scoped — §10)
    └─→ Phase H  coupling framework          (consumes D channels; hosts F/G demos)
             │
             ├─→ Phase I  thermal/structural/acoustics/particles/chemistry (grid-first)
@@ -609,7 +723,8 @@ discretization exists.
 
 ## 15b. Wave program status (2026-08-29)
 
-Executing program: real-time output → engines → 3D FDM → coupled turbine-in-grid.
+Executed: real-time output → engines → 3D FDM → coupled turbine-in-grid → capability assurance (74/74).
+Next: W9 — turbomachinery generalization (Phase G re-scope).
 
 | Wave | Deliverable | Status |
 |---|---|---|
@@ -621,14 +736,15 @@ Executing program: real-time output → engines → 3D FDM → coupled turbine-i
 | W5 | Phase F.1: PI speed governor wired into `TurbineConfig.governor` (load-fraction control, one update per step); regulation to setpoint <0.1% with mid-range throttle; batchable `simulate_engine`/`solve_fdm3` entry points stay pure | ✅ done (71 tests) |
 | W7 | Real-run DX: parametric `make_turbine_definition`, rotor-state CSV streaming in `run_coupled_turbine`, `run_fdm3_simulation` stamping driver, `docs/real_run_guide.md`. Also: CSV writer creates parent dirs; Otto heat release re-anchored at TDC volume (was over-producing past the Otto bound); γ-mismatch warning | ✅ done (73 tests) |
 | W8 | Capability assurance: hydro (water-turbine) soak with seawater properties; `thermo::steam` saturation EOS (Clausius–Clapeyron, enthalpies, vapor density); steam engine cycle upgraded to Rankine-lite (saturation-line temperatures, wet-steam quality, boiler-heat efficiency); `docs/capability_matrix.md` | ✅ done (74 tests) |
-| (future) | Generic `bc` framework promotion (when a mesh-based consumer exists); `CouplingManager` real exchange; field writers for FDM3 stamps | deferred |
+| W9 | Phase G re-scope (§10): product-agnostic turbomachinery — `fluid::turbomachinery` axial mean-line stage + stack (total-state closure, geometry-emergent work sign, relative-Mach choking, documented envelope), `thermo::polytropic` (stagnation family; engine polytropes NOT migrated — heat-transfer stand-ins), `fluid::lumped::plenum` (Greitzer, Jacobian-verified stability), `solve_operating_map`/`sample_operating_map`, thin `simulate_compression_system` driver (motor + plenum + PI, CSV). `IEos` + `density(p,T)` + Δs. No compressor app module | next |
+| (future) | Generic `bc` framework promotion (when a mesh-based consumer exists); `CouplingManager` real exchange; field writers for FDM3 stamps; compressible-grid coupling (unowned — lumped machine models carry no field channels by design, §10 G.5) | deferred |
 
 ## 16. Immediate next step
 
-
-Begin **Phase A** (shared integrators + public time stepping) and **Phase B**
-(6-DOF rigid bodies) — both are self-contained, unblock everything else,
-and validate the multi-method integration story early.
-
-- Phase A: `solver/time_stepping.hpp` promotion + `solver/integrators.*`
-- Phase B: `mechanics/rigid_body.*` + quaternion utilities
+**W9 — turbomachinery generalization** (§10): `thermo::polytropic` +
+`fluid::turbomachinery::stage` first (the two foundational modules), then
+stack → plenum → map tools → system driver/tests. Phases A–F are done;
+Phase G is re-scoped as product-agnostic capability; later ordering per
+the product doctrine (§10): prefer broad-but-simple domain coverage with
+documented envelopes over deep fidelity in one domain — Phase I (grid-first
+simple domains) and Phase H-lite machinery outrank deep FVM/FEM work.
