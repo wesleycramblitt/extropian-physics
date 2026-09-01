@@ -98,6 +98,8 @@ points. Conventions: [`docs/agent_guide.md`](docs/agent_guide.md).
 | Transient thermal (CHT-lite) | `thermal::simulate_thermal` (implicit, velocity-channel advection, read channel) | Fourier-series match 0.2%, effective-Péclet 0.3% |
 | Aeroacoustic-lite | `acoustics::simulate_wave` with uniform mean flow | c±u pulse arrival within 5% |
 | Grid-first domains | `thermal`/`acoustics`/`structural`/`particles`/`chemistry` — see rows above + capability_matrix | analytic-verified (W10, W11) |
+| FSI-lite (W12) | `coupling::simulate_drag_body`: 6-DOF body ⇄ fdm3, smeared point force + upstream drag probe, preconditionable flow | terminal v_t ±10%, drag→mg ±5%, exact normalization, deterministic |
+| CHT-lite demo (W12) | steady duct flow advects thermal energy via the W11 velocity channel | mean outlet T = 1D estimate ±5%; conduction control exact |
 
 ## Level-3 BEM turbine solver (reduced-order)
 
@@ -166,7 +168,7 @@ cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON \
 ```
 
 Requires: CMake 3.21+, C++23, `extropian-core`, `extropian-geometry`.
-88 unit tests (doctest) — the full suite runs in ~1 min.
+89 unit tests (doctest) — the full suite runs in ~1 min.
 
 ## License
 

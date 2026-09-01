@@ -748,17 +748,23 @@ Next per §16: CHT and aeroacoustics demos on `CoupledSimulation`.
 | W9 | Phase G re-scope (§10): product-agnostic turbomachinery — `fluid::turbomachinery` axial mean-line stage + stack (total-state closure, geometry-emergent work sign, relative-Mach choking, documented envelope), `thermo::polytropic` (stagnation family; engine polytropes NOT migrated — heat-transfer stand-ins), `fluid::lumped::plenum` (Greitzer, Jacobian-verified stability), `solve_operating_map`/`sample_operating_map`, thin `simulate_compression_system` driver (motor + plenum + PI, CSV). `IEos` + `density(p,T)` + Δs. No compressor app module | ✅ done (80/80 tests) — see docs/turbomachinery_architecture.md |
 | W10 | Phase H-lite + Phase I: real `CouplingManager` exchange (`SurfaceMapper` nearest/trilinear, relaxed + implicit sub-iterated links, `CoupledSimulation` multi-rate driver — staggered vs implicit verified on a linear system) + five grid-first domains: `thermal` (steady conduction/advection, SOR), `acoustics` (leapfrog wave, box-mode frequencies), `structural` (Navier–Cauchy displacement SOR, thermal-strain channel), `particles` (Lagrangian over `IVectorField3D`), `chemistry` (mass-action + Arrhenius reactor). All analytic-verified; docs/coupling_and_grid_first_domains.md | ✅ done (87/87 tests) |
 | W11 | Cross-domain capability: thermal gains TRANSIENT implicit stepping (time-level-fixed RHS — the SOR in-place cancellation bug caught by the Fourier-series test), per-node VELOCITY CHANNEL advection (CHT-lite); acoustics gains MEAN-FLOW (convected wave, c±u pulse verification); CouplingManager exchange is JACOBI-ORDERED with target READ-BACK (interface fixed point is write-order-independent); acceptance: two thermal slabs coupled through CoupledSimulation converge to the exact joined profile 400→350→300 | ✅ done (88/88 tests) |
-| (future) | Generic `bc` framework promotion (when a mesh-based consumer exists); `CouplingManager` real exchange; field writers for FDM3 stamps; compressible-grid coupling (unowned — lumped machine models carry no field channels by design, §10 G.5) | deferred |
+| W12 | FSI-lite: partitioned 6-DOF rigid-body ↔ fdm3 driver `DragBodyConfig`/`simulate_drag_body` (quadratic drag on relative velocity, Gaussian-smeared point force with discrete Σw=1 normalization, UPSTREAM drag probe — sampling at the CoM rings up the point-force self-induction, measured; β-under-relaxed, preconditionable flow). Acceptance: smearing normalization exact; zero-force purity (free fall g·t, fluid untouched); wind-tunnel absolute terminal v_t ±10% with |F_drag|→mg ±5%; determinism. CHT-lite channel demo: steady inlet/outlet duct drives thermal advection through the W11 velocity channel — outlet enthalpy ≈ source power, mean outlet T matches the 1D advective estimate ±5% | ✅ done (89/89 tests) — docs/coupling_and_grid_first_domains.md §3c |
+| (future) | Torque/center-of-pressure drag, orientation coupling (W13); true body-fitted wake sampling; generic `bc` framework promotion; `CouplingManager` real exchange; field writers for FDM3 stamps; compressible-grid coupling (unowned — lumped machine models carry no field channels by design, §10 G.5) | deferred |
 
 ## 16. Immediate next step
 
-**W9–W11 shipped (88/88 tests).** W11 delivered the cross-domain
-capability: transient implicit thermal with channel-driven advection,
-mean-flow acoustics, and the Jacobi-ordered read-back coupling that makes
-interface fixed points write-order-independent (two-slab CHT demo on
-`CoupledSimulation` converges to the exact profile). Next per the product
-doctrine (§10): apply the coupling to the fluid domains — conjugate heat
-transfer (thermal ↔ fdm3) and aeroacoustics (acoustics ↔ fdm3) wrapped
-as `CoupledSimulation` demos; then the remaining Phase I breadth
-(structural transient, thermal radiation, chemistry on grids). Deep
-FVM/FEM work (Phase J) stays deliberately last.
+**W9–W12 shipped (89/89 tests).** W12 delivered the first two-way
+fluid–body coupling (FSI-lite): a 6-DOF rigid body in fdm3 through a
+normalized smeared point force with an upstream drag probe, verified to
+the analytic terminal speed in a preconditioned wind tunnel, plus the
+CHT-lite channel demo (steady duct flow advects thermal energy through
+the W11 velocity channel; outlet enthalpy ≈ source power). The wave's
+physics lessons are recorded in the coupling doc §3c: the point-force
+self-induction (sampling at the CoM rings up the loop), the closed-box
+wall-pressure ledger correction, the explicit-diffusion stability limit,
+and the advection-dominated SOR residual floor. Next per the product
+doctrine (§10): aeroacoustics (acoustics ↔ fdm3) as a `CoupledSimulation`
+demo, the remaining Phase I breadth (structural transient, thermal
+radiation, chemistry on grids), then W13 rigid-body generality (torque,
+orientation, articulation). Deep FVM/FEM work (Phase J) stays
+deliberately last.

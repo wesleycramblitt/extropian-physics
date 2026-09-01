@@ -87,6 +87,8 @@ for pure/batchable stack solves — optimizer-ready). Turbocharger
 | Coupling | real `CouplingManager` (nearest/trilinear transfer, relaxed links with target read-back, Jacobi-ordered exchange), `CoupledSimulation` multi-rate driver | staggered vs implicit both land on analytic; two-slab CHT converges to the exact interface profile (350 in a 400→300 rod) |
 | Thermal transient (W11) | implicit time stepping on the same SOR operator; velocity-channel advection (per-node sampling) | Fourier-series match 0.2%; effective-Péclet profile 0.3% |
 | Aeroacoustic-lite (W11) | convected wave equation with uniform mean flow | pulse arrival at c+u / c−u within 5%; zero-flow control |
+| FSI-lite (W12) | `simulate_drag_body`: 6-DOF body ⇄ fdm3 via normalized Gaussian-smeared point force, upstream drag probe, preconditionable flow | smearing sum exact; zero-force purity; wind-tunnel terminal v_t ±10%; \|F_drag\|→mg ±5%; deterministic |
+| CHT-lite demo (W12) | steady duct field drives thermal advection (W11 velocity channel) | outlet enthalpy ≈ source power ±35% (upwind diffusion); mean outlet T = 1D estimate ±5%; exact conduction control |
 
 Run: caller programs link `exd-physics`; coupling is configured in code
 (domains register channels/sinks, links carry probe points) — pattern in

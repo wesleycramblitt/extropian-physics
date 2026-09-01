@@ -88,6 +88,7 @@ add_library(exd-physics STATIC
     # Coupling (field channels, samplers, real exchange)
     src/coupling/surface_mapping.cpp
     src/coupling/coupling_manager.cpp
+    src/coupling/drag_body_solver.cpp
 
     # Level-3 BEM turbine solver
     src/fluid/reduced_order/bem/bem_solver.cpp

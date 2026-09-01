@@ -113,9 +113,12 @@ add_physics_test(compression_system_test unit/fluid/turbomachinery/compression_s
 add_physics_test(surface_mapping_test unit/coupling/surface_mapping_test.cpp)
 add_physics_test(coupling_manager_test unit/coupling/coupling_manager_test.cpp)
 
+# Partitioned FSI-lite drag body (W12)
+add_physics_test(drag_body_fsi_test unit/coupling/drag_body_fsi_test.cpp)
+
 # Phase I grid-first domains (W10)
 add_physics_test(thermal_solver_test unit/thermal/thermal_solver_test.cpp)
-add_physics_test(thermal_coupling_test unit/thermal/thermal_coupling_test.cpp)
+add_physics_test(thermal_coupling_test unit/thermal/thermal_coupling_test.cpp)  # + W12 CHT-lite channel demo
 add_physics_test(wave_solver_test unit/acoustics/wave_solver_test.cpp)
 add_physics_test(elasticity_test unit/structural/elasticity_test.cpp)
 add_physics_test(particle_track_test unit/particles/particle_track_test.cpp)
