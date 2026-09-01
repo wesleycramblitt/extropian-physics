@@ -115,6 +115,7 @@ add_physics_test(coupling_manager_test unit/coupling/coupling_manager_test.cpp)
 
 # Phase I grid-first domains (W10)
 add_physics_test(thermal_solver_test unit/thermal/thermal_solver_test.cpp)
+add_physics_test(thermal_coupling_test unit/thermal/thermal_coupling_test.cpp)
 add_physics_test(wave_solver_test unit/acoustics/wave_solver_test.cpp)
 add_physics_test(elasticity_test unit/structural/elasticity_test.cpp)
 add_physics_test(particle_track_test unit/particles/particle_track_test.cpp)

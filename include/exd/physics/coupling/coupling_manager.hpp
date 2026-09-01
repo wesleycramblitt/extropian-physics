@@ -59,9 +59,21 @@ public:
         // (nearest-node semantics are implemented by the domain).
         std::function<bool(std::string_view, const std::array<double, 3>&, double)>
             scalar_write = nullptr;
+        // Optional READ-BACK of the target domain's CURRENT value at a point.
+        // When provided, relaxation blends with the live target value
+        //   relaxed = (1 - w) * current_target + w * sampled
+        // (the physically meaningful under-relaxation, which converges
+        // operator-split interface values to the true fixed point).  Without
+        // it the manager falls back to the value it last wrote (0 on the
+        // first exchange) -- documented v1 behavior.
+        std::function<bool(std::string_view, const std::array<double, 3>&, double&)>
+            scalar_read = nullptr;
         std::function<bool(std::string_view, const std::array<double, 3>&,
                            const std::array<double, 3>&)>
             vector_write = nullptr;
+        std::function<bool(std::string_view, const std::array<double, 3>&,
+                           std::array<double, 3>&)>
+            vector_read = nullptr;
         std::function<double()> current_time = nullptr; // for interval gating (informational:
                                                         // the manager times links from the `t`
                                                         // passed to exchange*)
@@ -103,11 +115,19 @@ private:
         // previous value as 0.0 and tracks from there.
         std::vector<double> last_written_scalar;
         std::vector<std::array<double, 3>> last_written_vector;
+        // Jacobi pre-pass scratch: source samples + target read-backs taken
+        // BEFORE any write of one exchange call.
+        std::vector<double> pending_sampled;
+        std::vector<double> pending_previous;
+        std::vector<std::array<double, 3>> pending_sampled_vec; // vector links
     };
 
     static bool due(const LinkRuntime& rt, double t);
     const DomainHandle* find_domain(const std::string& name) const;
-    bool perform_exchange(LinkRuntime& rt, double t, exd::physics::ModelStatus& status);
+    // Jacobi-split explicit exchange: gather (sample sources + read back
+    // targets) runs for all due links before any write is applied.
+    bool gather_exchange(LinkRuntime& rt, exd::physics::ModelStatus& status);
+    bool apply_exchange(LinkRuntime& rt, exd::physics::ModelStatus& status);
     bool perform_implicit_exchange(LinkRuntime& rt, double t, double tolerance,
                                    exd::physics::ModelStatus& status,
                                    bool& converged_out);

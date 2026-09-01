@@ -356,3 +356,90 @@ TEST_CASE("acoustics: channel adapter smoke test")
     // Out of bounds is handled gracefully by the channel.
     CHECK_FALSE(channel->sample({2.0, 0.5, 0.5}, value));
 }
+TEST_CASE("Acoustics: mean flow convects the pulse at c + u / c - u")
+{
+    const int nx = 201; // L = 10 m
+    const double dx = 0.05;
+    const double c = 343.0;
+    const double ux = 100.0;
+
+    WaveConfig cfg;
+    cfg.grid.origin = {0, 0, 0};
+    cfg.grid.spacing = {dx, 0.05, 0.05};
+    cfg.grid.dims = {nx, 2, 2};
+    cfg.sound_speed = c;
+    cfg.mean_flow = {ux, 0.0, 0.0};
+    cfg.max_steps = 400;
+    cfg.amplitude = 1.0;
+
+    // Gaussian pressure bump at x0 = 3 (smooth, zero initial velocity).
+    const double x0 = 3.0, sigma = 0.3;
+    std::vector<double> ic(static_cast<size_t>(nx) * 2 * 2, 0.0);
+    for (int i = 0; i < nx; ++i)
+    {
+        const double x = dx * i;
+        const double g = std::exp(-(x - x0) * (x - x0) / (2.0 * sigma * sigma));
+        for (int j = 0; j < 2; ++j)
+            for (int k = 0; k < 2; ++k)
+                ic[static_cast<size_t>(i + nx * (j + 2 * k))] = g;
+    }
+    cfg.initial_pressure = ic;
+
+    // Downstream probe at x = 4.5: arrival at (4.5 - 3)/(c + u).
+    cfg.probe_index = 90;
+    ModelStatus status;
+    const auto res_down = solve_wave(cfg, status);
+    REQUIRE(status.ok);
+
+    size_t peak = 0;
+    for (size_t i = 1; i < res_down.probe_history.size(); ++i)
+        if (res_down.probe_history[i] > res_down.probe_history[peak])
+            peak = i;
+    const double t_down = peak * res_down.dt_used;
+    const double t_down_exact = 1.5 / (c + ux);
+    CHECK(t_down == doctest::Approx(t_down_exact).epsilon(0.05));
+
+    // Upstream probe at x = 1.5: arrival at (3 - 1.5)/(c - u).
+    cfg.probe_index = 30;
+    const auto res_up = solve_wave(cfg, status);
+    REQUIRE(status.ok);
+    peak = 0;
+    for (size_t i = 1; i < res_up.probe_history.size(); ++i)
+        if (res_up.probe_history[i] > res_up.probe_history[peak])
+            peak = i;
+    const double t_up = peak * res_up.dt_used;
+    const double t_up_exact = 1.5 / (c - ux);
+    CHECK(t_up == doctest::Approx(t_up_exact).epsilon(0.05));
+
+    // Sanity: without flow the same pulse arrives at the analytic time.
+    cfg.mean_flow = {0.0, 0.0, 0.0};
+    cfg.probe_index = 30;
+    const auto res_0 = solve_wave(cfg, status);
+    REQUIRE(status.ok);
+    peak = 0;
+    for (size_t i = 1; i < res_0.probe_history.size(); ++i)
+        if (res_0.probe_history[i] > res_0.probe_history[peak])
+            peak = i;
+    const double t0 = peak * res_0.dt_used;
+    CHECK(t0 == doctest::Approx(1.5 / c).epsilon(0.05));
+}
+
+TEST_CASE("Acoustics: mean flow at sound speed warns")
+{
+    WaveConfig cfg;
+    cfg.grid.origin = {0, 0, 0};
+    cfg.grid.spacing = {0.05, 0.05, 0.05};
+    cfg.grid.dims = {21, 2, 2};
+    cfg.sound_speed = 343.0;
+    cfg.mean_flow = {343.0, 0.0, 0.0};
+    cfg.max_steps = 10;
+
+    std::string err;
+    std::vector<std::string> warn;
+    CHECK(validate_wave_config(cfg, err, warn));
+    bool found = false;
+    for (const auto& w : warn)
+        if (w.find("no upstream propagation") != std::string::npos)
+            found = true;
+    CHECK(found);
+}

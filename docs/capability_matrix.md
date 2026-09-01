@@ -84,7 +84,9 @@ for pure/batchable stack solves — optimizer-ready). Turbocharger
 | Structural | linear elasticity displacement form (SOR), thermal-strain channel, masked traction | uniaxial (ν=0) + oedometer + thermal column EXACT; bending qualitative + load-linearity |
 | Particles | Lagrangian cloud over sampled flow channels (RK4) | ballistic exact, terminal velocity, channel advection |
 | Chemistry | 0D mass-action + Arrhenius reactor | decay/equilibrium/second-order analytic, Arrhenius ratio 0.1% |
-| Coupling | real `CouplingManager` (nearest/trilinear transfer, relaxed implicit links), `CoupledSimulation` multi-rate driver | staggered vs implicit both land on analytic; multi-rate converges |
+| Coupling | real `CouplingManager` (nearest/trilinear transfer, relaxed links with target read-back, Jacobi-ordered exchange), `CoupledSimulation` multi-rate driver | staggered vs implicit both land on analytic; two-slab CHT converges to the exact interface profile (350 in a 400→300 rod) |
+| Thermal transient (W11) | implicit time stepping on the same SOR operator; velocity-channel advection (per-node sampling) | Fourier-series match 0.2%; effective-Péclet profile 0.3% |
+| Aeroacoustic-lite (W11) | convected wave equation with uniform mean flow | pulse arrival at c+u / c−u within 5%; zero-flow control |
 
 Run: caller programs link `exd-physics`; coupling is configured in code
 (domains register channels/sinks, links carry probe points) — pattern in

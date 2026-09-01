@@ -744,13 +744,18 @@ Next: W9 — turbomachinery generalization (Phase G re-scope).
 | W8 | Capability assurance: hydro (water-turbine) soak with seawater properties; `thermo::steam` saturation EOS (Clausius–Clapeyron, enthalpies, vapor density); steam engine cycle upgraded to Rankine-lite (saturation-line temperatures, wet-steam quality, boiler-heat efficiency); `docs/capability_matrix.md` | ✅ done (74 tests) |
 | W9 | Phase G re-scope (§10): product-agnostic turbomachinery — `fluid::turbomachinery` axial mean-line stage + stack (total-state closure, geometry-emergent work sign, relative-Mach choking, documented envelope), `thermo::polytropic` (stagnation family; engine polytropes NOT migrated — heat-transfer stand-ins), `fluid::lumped::plenum` (Greitzer, Jacobian-verified stability), `solve_operating_map`/`sample_operating_map`, thin `simulate_compression_system` driver (motor + plenum + PI, CSV). `IEos` + `density(p,T)` + Δs. No compressor app module | ✅ done (80/80 tests) — see docs/turbomachinery_architecture.md |
 | W10 | Phase H-lite + Phase I: real `CouplingManager` exchange (`SurfaceMapper` nearest/trilinear, relaxed + implicit sub-iterated links, `CoupledSimulation` multi-rate driver — staggered vs implicit verified on a linear system) + five grid-first domains: `thermal` (steady conduction/advection, SOR), `acoustics` (leapfrog wave, box-mode frequencies), `structural` (Navier–Cauchy displacement SOR, thermal-strain channel), `particles` (Lagrangian over `IVectorField3D`), `chemistry` (mass-action + Arrhenius reactor). All analytic-verified; docs/coupling_and_grid_first_domains.md | ✅ done (87/87 tests) |
+| W11 | Cross-domain capability: thermal gains TRANSIENT implicit stepping (time-level-fixed RHS — the SOR in-place cancellation bug caught by the Fourier-series test), per-node VELOCITY CHANNEL advection (CHT-lite); acoustics gains MEAN-FLOW (convected wave, c±u pulse verification); CouplingManager exchange is JACOBI-ORDERED with target READ-BACK (interface fixed point is write-order-independent); acceptance: two thermal slabs coupled through CoupledSimulation converge to the exact joined profile 400→350→300 | ✅ done (88/88 tests) |
 | (future) | Generic `bc` framework promotion (when a mesh-based consumer exists); `CouplingManager` real exchange; field writers for FDM3 stamps; compressible-grid coupling (unowned — lumped machine models carry no field channels by design, §10 G.5) | deferred |
 
 ## 16. Immediate next step
 
-**W9 + W10 shipped (87/87 tests).** Next per the product doctrine
-(§10): apply the now-real coupling machinery to the real domains —
-conjugate heat transfer (thermal ↔ fdm3), aeroacoustics (acoustics ↔
-fdm3), and the engine/turbine/compression demos migrated off ad hoc
-wiring onto `CoupledSimulation`; then the remaining Phase I breadth.
-Deep FVM/FEM work (Phase J) stays deliberately last.
+**W9–W11 shipped (88/88 tests).** W11 delivered the cross-domain
+capability: transient implicit thermal with channel-driven advection,
+mean-flow acoustics, and the Jacobi-ordered read-back coupling that makes
+interface fixed points write-order-independent (two-slab CHT demo on
+`CoupledSimulation` converges to the exact profile). Next per the product
+doctrine (§10): apply the coupling to the fluid domains — conjugate heat
+transfer (thermal ↔ fdm3) and aeroacoustics (acoustics ↔ fdm3) wrapped
+as `CoupledSimulation` demos; then the remaining Phase I breadth
+(structural transient, thermal radiation, chemistry on grids). Deep
+FVM/FEM work (Phase J) stays deliberately last.

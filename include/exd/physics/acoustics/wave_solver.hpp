@@ -57,6 +57,11 @@ struct WaveGridConfig {
 struct WaveConfig {
     WaveGridConfig grid;
     double sound_speed = 343.0;       // m/s
+    // Uniform mean flow (m/s): solves the linearized convected wave equation
+    // (dt + u·grad)^2 p = c^2 laplace p (aeroacoustic-lite). Zero = plain
+    // wave equation. CFL is keyed on the effective speed c + |u|; a warning
+    // fires when |u| >= c (no upstream propagation).
+    std::array<double, 3> mean_flow = {0.0, 0.0, 0.0};
     double dt = 0.0;                  // s; 0 -> CFL-adaptive (0.8*dx_min/(c*sqrt(3)))
     uint64_t max_steps = 10000;       // leapfrog step cap
     int32_t probe_index = 0;          // flat node index, i + nx*(j + ny*k)
@@ -67,6 +72,10 @@ struct WaveConfig {
     //   p0 = A*sin(l*pi*x/Lx)*sin(m*pi*y/Ly)*sin(n*pi*z/Lz)
     // with the constant 1 factor on any 2-node (Neumann) axis.
     std::array<int32_t, 3> initial_mode = {1, 1, 1};
+    // Optional arbitrary initial pressure field (flat, node count).  Empty =
+    // the box-mode seed (initial_mode).  Zero initial velocity either way.  A
+    // localized pulse here is what the mean-flow tests use.
+    std::vector<double> initial_pressure = {};
 };
 
 // ---------------------------------------------------------------------

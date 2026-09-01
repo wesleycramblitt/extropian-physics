@@ -1,10 +1,16 @@
 #pragma once
 
 // ---------------------------------------------------------------------
-// Phase I thermal domain: steady-state heat equation on
-// a regular structured grid.
+// Phase I thermal domain: steady-state (and transient, implicit CN-style)
+// heat equation on a regular structured grid.
 //
-//   k*laplace(T) - rho*cp*(u . grad T) + q_source = 0
+//   rho*cp dT/dt = k*laplace(T) - rho*cp*(u . grad T) + q_source
+//
+// Steady solve sets dT/dt = 0; the transient solve uses one implicit
+// backward-Euler-ish step per advance (unconditionally stable).  The
+// advecting velocity is either uniform (body_velocity) or sampled per
+// node from an optional IVectorField3D channel (CHT-lite coupling):
+//   u(x) = velocity_channel ? sample(x) : body_velocity.
 //
 // Discretization is a cell-centered-style FDM reduced to
 // the shared node grid exposed to the coupling layer:
@@ -94,8 +100,19 @@ struct ThermalConfig {
 
     double source_density = 0.0;                 // uniform volumetric heating (W/m^3)
     std::array<double, 3> body_velocity = {0.0, 0.0, 0.0}; // uniform advecting velocity (m/s)
+    // Optional per-node advection: when non-null, sampled at every node and
+    // overrides body_velocity (out-of-bounds samples fall back to
+    // body_velocity with one warning). Caller keeps the channel alive.
+    const coupling::IVectorField3D* velocity_channel = nullptr;
 
-    double dt = 1e-3;            // validated > 0; inert in the steady solve (reserved)
+    // Transient mode (simulate_thermal): dt is the time step, end_time the
+    // horizon, initial_temperature the uniform seed, max_time_steps a cap.
+    bool transient = false;
+    double end_time = 1.0;             // s, > 0 (transient only)
+    double initial_temperature = 300.0; // K, > 0 (transient seed; fixed nodes override)
+    uint64_t max_time_steps = 1000000;  // transient step cap, > 0
+
+    double dt = 1e-3;            // transient time step (s); steady solve ignores it
     uint64_t max_steps = 100000; // SOR sweep cap
     double tolerance = 1e-8;     // SOR convergence: max |dT| per sweep <= tolerance
 };
@@ -131,5 +148,43 @@ bool validate_thermal_config(const ThermalConfig& config,
 /// and an empty temperature grid.  On success, `status` is ok and carries any
 /// warnings.  Deterministic given the same config.
 ThermalResult solve_thermal(const ThermalConfig& config, ModelStatus& status);
+
+// ---------------------------------------------------------------------
+// Transient stepping + coupling-writable state (W11)
+// ---------------------------------------------------------------------
+
+/// Mutable thermal state for transient runs and link-driven coupling.
+/// `temperature` is node-centered on the config grid; `fixed` marks the
+/// nodes pinned by config boundaries or external writes.
+struct ThermalState {
+    double time = 0.0;                          // s
+    coupling::StructuredScalarGrid temperature; // node-centered
+    std::vector<bool> fixed;                    // node count, pinned mask
+};
+
+/// Build the initial state: uniform seed temperature, config boundaries
+/// applied and pinned.  Returns false (with status error) on bad config.
+bool init_thermal_state(ThermalState& state, const ThermalConfig& config,
+                        ModelStatus& status);
+
+/// Advance the state by one implicit step of `dt` (unconditionally
+/// stable; SOR to config.tolerance).  Pinned nodes (config + external
+/// writes) hold their values.  Deterministic.
+bool advance_thermal(ThermalState& state, double dt, const ThermalConfig& config,
+                     ModelStatus& status);
+
+/// Write a temperature at `point`, pinning the nearest node for all
+/// subsequent steps.  Used by coupling sinks to impose interface
+/// temperatures.  Fails on out-of-bounds points.
+bool set_temperature_point(ThermalState& state, const std::array<double, 3>& point,
+                           double value, ModelStatus& status);
+
+/// Trilinear scalar channel over a thermal state's temperature field
+/// (read-only).  The caller must keep `state` alive.
+std::unique_ptr<coupling::IScalarField3D> make_temperature_channel(const ThermalState& state);
+
+/// Time-march the transient solve (transient == false -> the steady solve).
+/// Records the final state; on failure result.ok is false.
+ThermalResult simulate_thermal(const ThermalConfig& config, ModelStatus& status);
 
 } // namespace exd::physics::thermal

@@ -55,6 +55,20 @@ bool validate_internal(const WaveConfig& config,
         error = "acoustics: max_steps must be > 0";
         return false;
     }
+    if (!std::isfinite(config.mean_flow[0]) || !std::isfinite(config.mean_flow[1]) ||
+        !std::isfinite(config.mean_flow[2]))
+    {
+        error = "acoustics: mean_flow must be finite";
+        return false;
+    }
+    {
+        const double umag = std::sqrt(config.mean_flow[0] * config.mean_flow[0] +
+                                      config.mean_flow[1] * config.mean_flow[1] +
+                                      config.mean_flow[2] * config.mean_flow[2]);
+        if (umag >= config.sound_speed)
+            warnings.push_back(
+                "acoustics: mean flow at/above sound speed (no upstream propagation)");
+    }
     const int64_t n = static_cast<int64_t>(g.dims[0]) * g.dims[1] * g.dims[2];
     if (config.probe_index < 0 || static_cast<int64_t>(config.probe_index) >= n)
     {
@@ -116,10 +130,18 @@ WaveResult solve_wave(const WaveConfig& config, ModelStatus& status)
     const double c = config.sound_speed;
 
     // ---- Time step ------------------------------------------------------
+    // The convected problem propagates at c + |u| at worst; key the CFL on
+    // the effective speed.
+    const double umag = std::sqrt(config.mean_flow[0] * config.mean_flow[0] +
+                                  config.mean_flow[1] * config.mean_flow[1] +
+                                  config.mean_flow[2] * config.mean_flow[2]);
+    const double c_eff = c + umag;
     const double dx_min = std::min({dx, dy, dz});
-    const double adaptive_dt = 0.8 * dx_min / (c * std::sqrt(3.0));
-    // Exact von Neumann bound: c*dt*sqrt(1/dx^2 + 1/dy^2 + 1/dz^2) <= 1.
-    const double cfl_limit = 1.0 / (c * std::sqrt(1.0 / (dx * dx) + 1.0 / (dy * dy) + 1.0 / (dz * dz)));
+    const double adaptive_dt = 0.8 * dx_min / (c_eff * std::sqrt(3.0));
+    // Exact von Neumann bound: c*dt*sqrt(1/dx^2 + 1/dy^2 + 1/dz^2) <= 1
+    // (the convected form adds |u|·dt/h terms; the effective-speed bound
+    // covers them conservatively).
+    const double cfl_limit = 1.0 / (c_eff * std::sqrt(1.0 / (dx * dx) + 1.0 / (dy * dy) + 1.0 / (dz * dz)));
 
     double dt_used = 0.0;
     if (config.dt <= 0.0)
@@ -136,16 +158,7 @@ WaveResult solve_wave(const WaveConfig& config, ModelStatus& status)
     }
     result.dt_used = dt_used;
 
-    // ---- Initial condition: box-mode seed -------------------------------
-    // L_a = (dims_a - 1)*spacing_a.  Direction: dims==2 -> Neumann axis with
-    // constant factor 1; otherwise Dirichlet axis with sin(mode*pi*x/L).
-    const double Lx = dx * static_cast<double>(nx - 1);
-    const double Ly = dy * static_cast<double>(ny - 1);
-    const double Lz = dz * static_cast<double>(nz - 1);
-    const double kx = (nx > 2) ? static_cast<double>(config.initial_mode[0]) * kPi / Lx : 0.0;
-    const double ky = (ny > 2) ? static_cast<double>(config.initial_mode[1]) * kPi / Ly : 0.0;
-    const double kz = (nz > 2) ? static_cast<double>(config.initial_mode[2]) * kPi / Lz : 0.0;
-
+    // ---- Initial condition: custom field or box-mode seed ---------------
     std::vector<double> p_prev(n, 0.0);   // p at t - dt
     std::vector<double> p_cur(n, 0.0);    // p at t
     std::vector<double> p_next(n, 0.0);
@@ -154,26 +167,59 @@ WaveResult solve_wave(const WaveConfig& config, ModelStatus& status)
     const double A = config.amplitude;
     std::vector<bool> fixed(n, false);
 
-    for (int k = 0; k < nz; ++k)
-        for (int j = 0; j < ny; ++j)
-            for (int i = 0; i < nx; ++i)
-            {
-                const std::size_t I = flat_index(g, i, j, k);
-                const double x = dx * static_cast<double>(i);
-                const double y = dy * static_cast<double>(j);
-                const double z = dz * static_cast<double>(k);
-                const double fx = (nx > 2) ? std::sin(kx * x) : 1.0;
-                const double fy = (ny > 2) ? std::sin(ky * y) : 1.0;
-                const double fz = (nz > 2) ? std::sin(kz * z) : 1.0;
-                const double p0 = A * fx * fy * fz;
-                p_prev[I] = p0;
-                p_cur[I] = p0;   // zero initial velocity -> p(-dt) = p(0)
+    if (config.initial_pressure.size() == n)
+    {
+        p_cur = config.initial_pressure;
+        p_prev = config.initial_pressure;   // zero initial velocity
+        for (int k = 0; k < nz; ++k)
+            for (int j = 0; j < ny; ++j)
+                for (int i = 0; i < nx; ++i)
+                {
+                    const std::size_t I = flat_index(g, i, j, k);
+                    fixed[I] = (nx > 2 && (i == 0 || i == nx - 1)) ||
+                               (ny > 2 && (j == 0 || j == ny - 1)) ||
+                               (nz > 2 && (k == 0 || k == nz - 1));
+                }
+    }
+    else
+    {
+        if (!config.initial_pressure.empty())
+        {
+            result.status.ok = false;
+            result.status.error = "acoustics: initial_pressure size must be 0 or the node count";
+            status = result.status;
+            return result;
+        }
+        // L_a = (dims_a - 1)*spacing_a.  Direction: dims==2 -> Neumann axis
+        // with constant factor 1; otherwise Dirichlet axis with
+        // sin(mode*pi*x/L).
+        const double Lx = dx * static_cast<double>(nx - 1);
+        const double Ly = dy * static_cast<double>(ny - 1);
+        const double Lz = dz * static_cast<double>(nz - 1);
+        const double kx = (nx > 2) ? static_cast<double>(config.initial_mode[0]) * kPi / Lx : 0.0;
+        const double ky = (ny > 2) ? static_cast<double>(config.initial_mode[1]) * kPi / Ly : 0.0;
+        const double kz = (nz > 2) ? static_cast<double>(config.initial_mode[2]) * kPi / Lz : 0.0;
+        for (int k = 0; k < nz; ++k)
+            for (int j = 0; j < ny; ++j)
+                for (int i = 0; i < nx; ++i)
+                {
+                    const std::size_t I = flat_index(g, i, j, k);
+                    const double x = dx * static_cast<double>(i);
+                    const double y = dy * static_cast<double>(j);
+                    const double z = dz * static_cast<double>(k);
+                    const double fx = (nx > 2) ? std::sin(kx * x) : 1.0;
+                    const double fy = (ny > 2) ? std::sin(ky * y) : 1.0;
+                    const double fz = (nz > 2) ? std::sin(kz * z) : 1.0;
+                    const double p0 = A * fx * fy * fz;
+                    p_prev[I] = p0;
+                    p_cur[I] = p0;   // zero initial velocity -> p(-dt) = p(0)
 
-                // Dirichlet (pinned 0) walls on axes with 3+ nodes.
-                fixed[I] = (nx > 2 && (i == 0 || i == nx - 1)) ||
-                           (ny > 2 && (j == 0 || j == ny - 1)) ||
-                           (nz > 2 && (k == 0 || k == nz - 1));
-            }
+                    // Dirichlet (pinned 0) walls on axes with 3+ nodes.
+                    fixed[I] = (nx > 2 && (i == 0 || i == nx - 1)) ||
+                               (ny > 2 && (j == 0 || j == ny - 1)) ||
+                               (nz > 2 && (k == 0 || k == nz - 1));
+                }
+    }
 
     double energy_initial = 0.0;
     for (double v : p_cur)
@@ -252,7 +298,77 @@ WaveResult solve_wave(const WaveConfig& config, ModelStatus& status)
                         lap += (p_cur[I_hi] - 2.0 * p_cur[I] + p_cur[I_lo]) * inv_dz2;
                     }
 
-                    p_next[I] = 2.0 * p_cur[I] - p_prev[I] + cdt2 * lap;
+                    double update = 2.0 * p_cur[I] - p_prev[I] + cdt2 * lap;
+
+                    // Linearized convected wave equation (mean flow u):
+                    //   p_{n+1} = 2p_n - p_{n-1} + (c*dt)^2 lap p_n
+                    //             - 2*dt*(u.grad)(p_n - p_{n-1})
+                    //             - dt^2*(u.grad)^2 p_n
+                    if (umag > 0.0)
+                    {
+                        auto grad_term = [&](const std::vector<double>& v) {
+                            double s = 0.0;
+                            auto d_a = [&](int axis, int di, int dj, int dk) {
+                                const std::size_t I2 = flat_index(g, i + di, j + dj, k + dk);
+                                return v[I2];
+                            };
+                            if (nx > 2)
+                                s += config.mean_flow[0] *
+                                     (d_a(0, 1, 0, 0) - d_a(0, -1, 0, 0)) / (2.0 * dx);
+                            else
+                                s += config.mean_flow[0] *
+                                     (d_a(0, (i == 0) ? 1 : 0, 0, 0) - d_a(0, (i == 0) ? 0 : 1, 0, 0)) / (2.0 * dx);
+                            if (ny > 2)
+                                s += config.mean_flow[1] *
+                                     (d_a(1, 0, 1, 0) - d_a(1, 0, -1, 0)) / (2.0 * dy);
+                            else
+                                s += config.mean_flow[1] *
+                                     (d_a(1, 0, (j == 0) ? 1 : 0, 0) - d_a(1, 0, (j == 0) ? 0 : 1, 0)) / (2.0 * dy);
+                            if (nz > 2)
+                                s += config.mean_flow[2] *
+                                     (d_a(2, 0, 0, 1) - d_a(2, 0, 0, -1)) / (2.0 * dz);
+                            else
+                                s += config.mean_flow[2] *
+                                     (d_a(2, 0, 0, (k == 0) ? 1 : 0) - d_a(2, 0, 0, (k == 0) ? 0 : 1)) / (2.0 * dz);
+                            return s;
+                        };
+                        // (u.grad)^2 p_n via the mixed expansion.
+                        auto quad_term = [&]() {
+                            double q = 0.0;
+                            auto at = [&](int di, int dj, int dk) {
+                                return p_cur[flat_index(g, i + di, j + dj, k + dk)];
+                            };
+                            const double ux = config.mean_flow[0];
+                            const double uy = config.mean_flow[1];
+                            const double uz = config.mean_flow[2];
+                            if (nx > 2)
+                                q += ux * ux * (at(1, 0, 0) - 2.0 * p_cur[I] + at(-1, 0, 0)) / (dx * dx);
+                            else
+                                q += ux * ux * (at((i == 0) ? 1 : 0, 0, 0) - 2.0 * p_cur[I] + at((i == 0) ? 0 : 1, 0, 0)) / (dx * dx);
+                            if (ny > 2)
+                                q += uy * uy * (at(0, 1, 0) - 2.0 * p_cur[I] + at(0, -1, 0)) / (dy * dy);
+                            else
+                                q += uy * uy * (at(0, (j == 0) ? 1 : 0, 0) - 2.0 * p_cur[I] + at(0, (j == 0) ? 0 : 1, 0)) / (dy * dy);
+                            if (nz > 2)
+                                q += uz * uz * (at(0, 0, 1) - 2.0 * p_cur[I] + at(0, 0, -1)) / (dz * dz);
+                            else
+                                q += uz * uz * (at(0, 0, (k == 0) ? 1 : 0) - 2.0 * p_cur[I] + at(0, 0, (k == 0) ? 0 : 1)) / (dz * dz);
+                            if (nx > 2 && ny > 2)
+                                q += 2.0 * ux * uy *
+                                     (at(1, 1, 0) - at(-1, 1, 0) - at(1, -1, 0) + at(-1, -1, 0)) / (4.0 * dx * dy);
+                            if (nx > 2 && nz > 2)
+                                q += 2.0 * ux * uz *
+                                     (at(1, 0, 1) - at(-1, 0, 1) - at(1, 0, -1) + at(-1, 0, -1)) / (4.0 * dx * dz);
+                            if (ny > 2 && nz > 2)
+                                q += 2.0 * uy * uz *
+                                     (at(0, 1, 1) - at(0, -1, 1) - at(0, 1, -1) + at(0, -1, -1)) / (4.0 * dy * dz);
+                            return q;
+                        };
+                        update -= 2.0 * dt_used * (grad_term(p_cur) - grad_term(p_prev));
+                        update -= dt_used * dt_used * quad_term();
+                    }
+
+                    p_next[I] = update;
                 }
 
         p_prev.swap(p_cur);

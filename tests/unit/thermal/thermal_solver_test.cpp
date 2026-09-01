@@ -315,3 +315,150 @@ TEST_CASE("thermal: channel adapter smoke test")
     // Out of bounds is handled gracefully by the channel.
     CHECK_FALSE(channel->sample({2.0, 0.0, 0.0}, value));
 }
+// ─────────────────────────────────────────────────────────────
+// W11: transient implicit solver + velocity-channel advection
+// ─────────────────────────────────────────────────────────────
+
+TEST_CASE("Thermal: transient CN matches the Fourier series and converges to steady")
+{
+    ThermalConfig cfg;
+    cfg.grid.origin = {0, 0, 0};
+    cfg.grid.spacing = {0.05, 0.05, 0.05};
+    cfg.grid.dims = {21, 2, 2}; // L = 1.0 m rod
+    cfg.material.conductivity = 50.0;
+    cfg.material.density = 1.0;      // alpha = k/(rho*cp) = 0.05 m^2/s
+    cfg.material.specific_heat = 1000.0;
+    for (int f = 0; f < 6; ++f)
+        cfg.boundary_kind[static_cast<size_t>(f)] = ThermalBoundaryKind::Insulated;
+    cfg.boundary_kind[0] = ThermalBoundaryKind::FixedValue; // +x = 400
+    cfg.boundary_kind[1] = ThermalBoundaryKind::FixedValue; // -x = 300
+    cfg.boundary_values[0] = 400.0;
+    cfg.boundary_values[1] = 300.0;
+    cfg.initial_temperature = 300.0;
+    cfg.transient = true;
+    cfg.dt = 0.1;
+    cfg.end_time = 2.0;   // intermediate: Fourier series check
+    cfg.tolerance = 1e-8;
+
+    ModelStatus status;
+    const auto res = simulate_thermal(cfg, status);
+    REQUIRE(status.ok);
+    REQUIRE(res.ok);
+
+    // Analytic: T(x,t) = 300 + 100x + sum_n Bn sin(n pi x) e^(-alpha (n pi)^2 t),
+    // Bn = 200 (-1)^n / (n pi) for the 300 K initial condition.
+    const double alpha = 0.05, t = 2.0, xmid = 0.5;
+    double analytic = 300.0 + 100.0 * xmid;
+    for (int n = 1; n <= 5; n += 2)
+    {
+        const double bn = 200.0 * std::pow(-1.0, n) / (n * 3.14159265358979);
+        analytic += bn * std::sin(n * 3.14159265358979 * xmid) *
+                    std::exp(-alpha * (n * 3.14159265358979) * (n * 3.14159265358979) * t);
+    }
+    const size_t mid = static_cast<size_t>(10 + 21 * (0 + 2 * 0)); // node (10,0,0)
+    CHECK(res.temperature.values[mid] == doctest::Approx(analytic).epsilon(2e-3));
+
+    // Longer run converges to the steady linear profile.
+    cfg.end_time = 200.0;
+    const auto res_ss = simulate_thermal(cfg, status);
+    REQUIRE(status.ok);
+    for (int i = 0; i <= 20; i += 5)
+    {
+        const double x = 0.05 * i;
+        const size_t I = static_cast<size_t>(i);
+        CHECK(res_ss.temperature.values[I] == doctest::Approx(300.0 + 100.0 * x).epsilon(2e-3));
+    }
+}
+
+TEST_CASE("Thermal: velocity channel advects like body velocity (effective-Pe profile)")
+{
+    struct UniformFlow : exd::physics::coupling::IVectorField3D
+    {
+        std::array<double, 3> v{0.01, 0.0, 0.0};
+        bool sample(const std::array<double, 3>&, std::array<double, 3>& out) const override
+        {
+            out = v;
+            return true;
+        }
+    } flow;
+
+    auto make_cfg = [&](bool use_channel) {
+        ThermalConfig cfg;
+        cfg.grid.origin = {0, 0, 0};
+        cfg.grid.spacing = {0.05, 0.05, 0.05};
+        cfg.grid.dims = {21, 2, 2};
+        cfg.material.conductivity = 50.0;
+        cfg.material.density = 1.0;
+        cfg.material.specific_heat = 1000.0; // rho*cp = 1000
+        for (int f = 0; f < 6; ++f)
+            cfg.boundary_kind[static_cast<size_t>(f)] = ThermalBoundaryKind::Insulated;
+        cfg.boundary_kind[0] = ThermalBoundaryKind::FixedValue;
+        cfg.boundary_kind[1] = ThermalBoundaryKind::FixedValue;
+        cfg.boundary_values[0] = 400.0;
+        cfg.boundary_values[1] = 300.0;
+        if (use_channel)
+            cfg.velocity_channel = &flow;
+        else
+            cfg.body_velocity = flow.v;
+        return cfg;
+    };
+
+    ModelStatus status;
+    const auto res_body = solve_thermal(make_cfg(false), status);
+    REQUIRE(status.ok);
+    const auto res_chan = solve_thermal(make_cfg(true), status);
+    REQUIRE(status.ok);
+
+    // The two paths agree exactly.
+    CHECK(res_body.temperature.values == res_chan.temperature.values);
+
+    // First-order upwind adds numerical diffusion k_eff = k + rho*cp*|u|*h/2:
+    // the profile matches the effective-Pe exponential.
+    const double rho_cp = 1000.0, u = 0.01, k = 50.0, h = 0.05, L = 1.0;
+    const double k_eff = k + rho_cp * std::fabs(u) * h / 2.0;
+    const double pe = rho_cp * std::fabs(u) * L / k_eff;
+    for (int i = 0; i <= 20; i += 5)
+    {
+        const double x = 0.05 * i;
+        const double expected = 300.0 + 100.0 * (std::exp(pe * x / L) - 1.0) /
+                                              (std::exp(pe) - 1.0);
+        const size_t I = static_cast<size_t>(i);
+        CHECK(res_body.temperature.values[I] == doctest::Approx(expected).epsilon(3e-3));
+    }
+}
+
+TEST_CASE("Thermal: set_temperature_point pins a node through subsequent steps")
+{
+    ThermalConfig cfg;
+    cfg.grid.origin = {0, 0, 0};
+    cfg.grid.spacing = {0.05, 0.05, 0.05};
+    cfg.grid.dims = {21, 2, 2};
+    cfg.material.conductivity = 50.0;
+    cfg.material.density = 1.0;
+    cfg.material.specific_heat = 1.0; // alpha = 50
+    for (int f = 0; f < 6; ++f)
+        cfg.boundary_kind[static_cast<size_t>(f)] = ThermalBoundaryKind::Insulated;
+    cfg.boundary_kind[0] = ThermalBoundaryKind::FixedValue;
+    cfg.boundary_kind[1] = ThermalBoundaryKind::FixedValue;
+    cfg.boundary_values[0] = 400.0;
+    cfg.boundary_values[1] = 300.0;
+    cfg.initial_temperature = 350.0;
+
+    ThermalState state;
+    ModelStatus status;
+    REQUIRE(init_thermal_state(state, cfg, status));
+
+    const std::array<double, 3> p = {0.5, 0.0, 0.0}; // node (10,0,0)
+    REQUIRE(set_temperature_point(state, p, 200.0, status)); // cold spot
+    REQUIRE(advance_thermal(state, 1e-3, cfg, status));
+    REQUIRE(advance_thermal(state, 1e-3, cfg, status));
+
+    const size_t I = static_cast<size_t>(10);
+    CHECK(state.temperature.values[I] == doctest::Approx(200.0).epsilon(1e-12));
+    // Its neighbors moved toward the spot (heat flows out of the pin).
+    CHECK(state.temperature.values[I - 1] < 350.0);
+    CHECK(state.temperature.values[I + 1] < 350.0);
+    // Out-of-bounds write fails cleanly.
+    const std::array<double, 3> bad = {5.0, 0.0, 0.0};
+    CHECK(!set_temperature_point(state, bad, 200.0, status));
+}

@@ -60,12 +60,36 @@ channel rule (engine/compressor precedent) — recorded in the headers.
   unrealizable 1e-10 chases with a warning.
 - Particles/chemistry: integrator-tolerance-bound (RK4 default).
 
+## 3b. W11 — transient thermal, CHT-lite, mean-flow acoustics
+
+- `thermal` gains transient implicit stepping: `ThermalState` +
+  `init_thermal_state`/`advance_thermal`/`simulate_thermal`, one
+  backward-Euler-style step per advance (unconditionally stable), with the
+  time level held FIXED on the RHS (an in-place RHS cancels the time term
+  at the SOR fixed point — caught by the Fourier-series test).
+  `set_temperature_point` pins interface nodes for link-driven coupling;
+  `make_temperature_channel` exposes a trilinear read channel.
+- Velocity-channel advection: `ThermalConfig.velocity_channel`
+  (IVectorField3D) sampled per node (CHT-lite); falls back to
+  body_velocity out of bounds.
+- `acoustics` mean flow: linearized convected wave equation
+  `(dt + u·grad)^2 p = c^2·lap p`; CFL keyed on c + |u|; warning at
+  |u| >= c. Verdict: pulse arrival at c+u / c-u within 5%.
+- CouplingManager exchange is JACOBI-ORDERED (all sources sampled +
+  targets read back BEFORE any write) with optional target read-back
+  relaxation.  This makes the interface fixed point independent of link
+  write order — the two-slab CHT acceptance test pins it at the
+  flux-matched 350 K (a sequential per-link order biased it to 377 K).
+
 ## 4. Cross-domain demos (tests, not apps)
 
 - CoupledSimulation staggered-vs-implicit linear agreement (H acceptance).
+- TWO-SLAB CHT (W11 acceptance): two transient thermal domains on
+  `CoupledSimulation`, interface temperature exchanged through relaxed
+  read-back links → exact joined profile 400 → 350 → 300.
 - Structural thermal-expansion coupling-lite: a temperature channel drives
   the displacement field directly.
 - Particle channel advection: a structured velocity grid (or any
   `IVectorField3D`) carries the cloud.
-- Full conjugate heat transfer (thermal ↔ fdm3) and aeroacoustics are next
-  steps once Phase H-lite composition is applied to the real domains.
+- Full conjugate heat transfer (thermal ↔ fdm3 velocity) and aeroacoustics
+  (acoustics ↔ fdm3) as `CoupledSimulation` demos are the next milestone.

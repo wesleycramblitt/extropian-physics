@@ -168,8 +168,8 @@ const CouplingManager::DomainHandle* CouplingManager::find_domain(const std::str
     return nullptr;
 }
 
-bool CouplingManager::perform_exchange(LinkRuntime& rt, double t,
-                                       exd::physics::ModelStatus& status)
+bool CouplingManager::gather_exchange(LinkRuntime& rt,
+                                        exd::physics::ModelStatus& status)
 {
     const CouplingLink& link = rt.link;
     const DomainHandle* source = find_domain(link.source_domain);
@@ -182,7 +182,8 @@ bool CouplingManager::perform_exchange(LinkRuntime& rt, double t,
         return false;
     }
 
-    const double w = link.relaxation;
+    rt.pending_sampled.assign(link.probe_points.size(), 0.0);
+    rt.pending_previous.assign(link.probe_points.size(), 0.0);
 
     if (!link.vector_field)
     {
@@ -201,27 +202,30 @@ bool CouplingManager::perform_exchange(LinkRuntime& rt, double t,
                            link.source_channel + "' not found";
             return false;
         }
-
         for (std::size_t i = 0; i < link.probe_points.size(); ++i)
         {
-            double sampled = 0.0;
-            if (!channel->sample(link.probe_points[i], sampled))
+            if (!channel->sample(link.probe_points[i], rt.pending_sampled[i]))
             {
                 status.warnings.push_back("exchange: link '" + link.id +
                                           "' source sample out of bounds at probe " +
                                           std::to_string(i) + "; probe skipped");
-                continue;
+                rt.pending_sampled[i] = 0.0;
             }
-            const double previous = rt.last_written_scalar[i];
-            const double relaxed = (1.0 - w) * previous + w * sampled;
-            if (!target->scalar_write(link.target_channel, link.probe_points[i], relaxed))
+            rt.pending_previous[i] = rt.last_written_scalar[i];
+            if (target->scalar_read)
             {
-                status.ok = false;
-                status.error = "exchange: link '" + link.id + "' target scalar write failed "
-                               "at probe " + std::to_string(i);
-                return false;
+                double current = rt.pending_previous[i];
+                if (!target->scalar_read(link.target_channel, link.probe_points[i], current))
+                {
+                    status.warnings.push_back("exchange: link '" + link.id +
+                                              "' target read-back failed at probe " +
+                                              std::to_string(i) + "; using last written");
+                }
+                else
+                {
+                    rt.pending_previous[i] = current;
+                }
             }
-            rt.last_written_scalar[i] = relaxed;
         }
     }
     else
@@ -241,22 +245,61 @@ bool CouplingManager::perform_exchange(LinkRuntime& rt, double t,
                            link.source_channel + "' not found";
             return false;
         }
-
+        rt.pending_sampled_vec.assign(link.probe_points.size(),
+                                      std::array<double, 3>{0.0, 0.0, 0.0});
         for (std::size_t i = 0; i < link.probe_points.size(); ++i)
         {
-            std::array<double, 3> sampled{0.0, 0.0, 0.0};
-            if (!channel->sample(link.probe_points[i], sampled))
+            if (!channel->sample(link.probe_points[i], rt.pending_sampled_vec[i]))
             {
                 status.warnings.push_back("exchange: link '" + link.id +
                                           "' source sample out of bounds at probe " +
                                           std::to_string(i) + "; probe skipped");
-                continue;
+                rt.pending_sampled_vec[i] = {0.0, 0.0, 0.0};
             }
-            const std::array<double, 3>& previous = rt.last_written_vector[i];
-            std::array<double, 3> relaxed;
+        }
+    }
+    return true;
+}
+
+bool CouplingManager::apply_exchange(LinkRuntime& rt,
+                                     exd::physics::ModelStatus& status)
+{
+    const CouplingLink& link = rt.link;
+    const DomainHandle* target = find_domain(link.target_domain);
+    if (target == nullptr)
+    {
+        status.ok = false;
+        status.error = "exchange: link '" + link.id +
+                       "' references a domain that is no longer registered";
+        return false;
+    }
+    const double w = link.relaxation;
+
+    if (!link.vector_field)
+    {
+        for (std::size_t i = 0; i < link.probe_points.size(); ++i)
+        {
+            const double relaxed =
+                (1.0 - w) * rt.pending_previous[i] + w * rt.pending_sampled[i];
+            if (!target->scalar_write(link.target_channel, link.probe_points[i], relaxed))
+            {
+                status.ok = false;
+                status.error = "exchange: link '" + link.id + "' target scalar write failed "
+                               "at probe " + std::to_string(i);
+                return false;
+            }
+            rt.last_written_scalar[i] = relaxed;
+        }
+    }
+    else
+    {
+        for (std::size_t i = 0; i < link.probe_points.size(); ++i)
+        {
+            std::array<double, 3> relaxed{};
             for (int c = 0; c < 3; ++c)
             {
-                relaxed[c] = (1.0 - w) * previous[c] + w * sampled[c];
+                const double prev = rt.last_written_vector[i][c];
+                relaxed[c] = (1.0 - w) * prev + w * rt.pending_sampled_vec[i][c];
             }
             if (!target->vector_write(link.target_channel, link.probe_points[i], relaxed))
             {
@@ -268,8 +311,6 @@ bool CouplingManager::perform_exchange(LinkRuntime& rt, double t,
             rt.last_written_vector[i] = relaxed;
         }
     }
-
-    rt.last_exchange = t;
     return true;
 }
 
@@ -322,7 +363,21 @@ bool CouplingManager::perform_implicit_exchange(LinkRuntime& rt, double t, doubl
                     ++skipped;
                     continue;
                 }
-                const double previous = rt.last_written_scalar[i];
+                double previous = rt.last_written_scalar[i];
+                if (target->scalar_read)
+                {
+                    double current = previous;
+                    if (!target->scalar_read(link.target_channel, link.probe_points[i], current))
+                    {
+                        status.warnings.push_back("exchange_implicit: link '" + link.id +
+                                                  "' target read-back failed at probe " +
+                                                  std::to_string(i) + "; using last written");
+                    }
+                    else
+                    {
+                        previous = current;
+                    }
+                }
                 const double relaxed = (1.0 - w) * previous + w * sampled;
                 if (!target->scalar_write(link.target_channel, link.probe_points[i], relaxed))
                 {
@@ -426,6 +481,10 @@ int CouplingManager::exchange(double t, exd::physics::ModelStatus& status)
 {
     status = exd::physics::ModelStatus{};
 
+    // JACOBI ORDER (W11): gather every due link's samples + read-backs
+    // against the pre-exchange state, THEN apply all writes.  The two-slab
+    // CHT acceptance test pins the symmetric interface fixed point; a
+    // sequential per-link order would fold the write order into the result.
     int executed = 0;
     for (auto& rt : links_)
     {
@@ -433,16 +492,28 @@ int CouplingManager::exchange(double t, exd::physics::ModelStatus& status)
         {
             continue;
         }
-        if (!perform_exchange(rt, t, status))
+        if (!gather_exchange(rt, status))
         {
             status.ok = false;
             return executed;
         }
         ++executed;
     }
+    for (auto& rt : links_)
+    {
+        if (!due(rt, t))
+        {
+            continue;
+        }
+        if (!apply_exchange(rt, status))
+        {
+            status.ok = false;
+            return executed;
+        }
+        rt.last_exchange = t;
+    }
     return executed;
 }
-
 int CouplingManager::exchange_implicit(double t, double tolerance,
                                        exd::physics::ModelStatus& status)
 {
