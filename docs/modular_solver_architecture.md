@@ -63,6 +63,12 @@ framework**.
 | Turbomachinery | `fluid::turbomachinery` | ✅ W9: axial mean-line stage/stack, operating map, map lookup — §10 G.1 |
 | Plenum / 0D volumes | `fluid::lumped` | ✅ W9: Greitzer plenum, generic gas-network node — §10 G.3 |
 | Polytropic processes | `thermo` | ✅ W9: stagnation-polytrope primitives; engine volume-polytropes stay local — §10 G.2 |
+| Coupling exchange | `coupling` | ✅ W10: real `CouplingManager`/`SurfaceMapper`/`CoupledSimulation` (was placeholder) |
+| Thermal (grid-first) | `thermal` | ✅ W10: steady conduction/advection, `IScalarField3D` |
+| Acoustics (grid-first) | `acoustics` | ✅ W10: leapfrog wave, `IScalarField3D` |
+| Structural (grid-first) | `structural` | ✅ W10: Navier–Cauchy displacement SOR, `IVectorField3D`, thermal-strain coupling |
+| Particles (Lagrangian) | `particles` | ✅ W10: tracks over sampled channels |
+| Chemistry (0D) | `chemistry` | ✅ W10: mass-action + Arrhenius reactor |
 
 ### 2.2 Seams (the lego connectors)
 
@@ -737,14 +743,14 @@ Next: W9 — turbomachinery generalization (Phase G re-scope).
 | W7 | Real-run DX: parametric `make_turbine_definition`, rotor-state CSV streaming in `run_coupled_turbine`, `run_fdm3_simulation` stamping driver, `docs/real_run_guide.md`. Also: CSV writer creates parent dirs; Otto heat release re-anchored at TDC volume (was over-producing past the Otto bound); γ-mismatch warning | ✅ done (73 tests) |
 | W8 | Capability assurance: hydro (water-turbine) soak with seawater properties; `thermo::steam` saturation EOS (Clausius–Clapeyron, enthalpies, vapor density); steam engine cycle upgraded to Rankine-lite (saturation-line temperatures, wet-steam quality, boiler-heat efficiency); `docs/capability_matrix.md` | ✅ done (74 tests) |
 | W9 | Phase G re-scope (§10): product-agnostic turbomachinery — `fluid::turbomachinery` axial mean-line stage + stack (total-state closure, geometry-emergent work sign, relative-Mach choking, documented envelope), `thermo::polytropic` (stagnation family; engine polytropes NOT migrated — heat-transfer stand-ins), `fluid::lumped::plenum` (Greitzer, Jacobian-verified stability), `solve_operating_map`/`sample_operating_map`, thin `simulate_compression_system` driver (motor + plenum + PI, CSV). `IEos` + `density(p,T)` + Δs. No compressor app module | ✅ done (80/80 tests) — see docs/turbomachinery_architecture.md |
+| W10 | Phase H-lite + Phase I: real `CouplingManager` exchange (`SurfaceMapper` nearest/trilinear, relaxed + implicit sub-iterated links, `CoupledSimulation` multi-rate driver — staggered vs implicit verified on a linear system) + five grid-first domains: `thermal` (steady conduction/advection, SOR), `acoustics` (leapfrog wave, box-mode frequencies), `structural` (Navier–Cauchy displacement SOR, thermal-strain channel), `particles` (Lagrangian over `IVectorField3D`), `chemistry` (mass-action + Arrhenius reactor). All analytic-verified; docs/coupling_and_grid_first_domains.md | ✅ done (87/87 tests) |
 | (future) | Generic `bc` framework promotion (when a mesh-based consumer exists); `CouplingManager` real exchange; field writers for FDM3 stamps; compressible-grid coupling (unowned — lumped machine models carry no field channels by design, §10 G.5) | deferred |
 
 ## 16. Immediate next step
 
-**W9 shipped (80/80 tests).** Next per the product doctrine (§10 —
-broad-but-simple domain coverage with documented envelopes over deep
-fidelity): Phase I grid-first domains (thermal, structural, acoustics,
-particles, chemistry) and Phase H-lite coupling machinery — the 
-`CouplingManager` real exchange that the engine/turbine/compression
-demos currently wire ad hoc. Deep FVM/FEM work (Phase J) stays
-deliberately last.
+**W9 + W10 shipped (87/87 tests).** Next per the product doctrine
+(§10): apply the now-real coupling machinery to the real domains —
+conjugate heat transfer (thermal ↔ fdm3), aeroacoustics (acoustics ↔
+fdm3), and the engine/turbine/compression demos migrated off ad hoc
+wiring onto `CoupledSimulation`; then the remaining Phase I breadth.
+Deep FVM/FEM work (Phase J) stays deliberately last.

@@ -52,7 +52,15 @@ include/exd/physics/ and src/
 ├── control/                   PI controller (anti-windup)
 ├── electrical/                static EF/MF (SOR Poisson), 3D FDTD, DC motor
 ├── coupling/                  field channels (IFlowField3D, vector/scalar),
-│   │                          samplers, structured-grid adapters
+│   │                          samplers, structured-grid adapters, REAL
+│   │                          CouplingManager + SurfaceMapper + CoupledSimulation
+│   │                          multi-rate driver [docs/coupling_and_grid_first_domains.md]
+├── thermal/ acoustics/        Phase I grid-first domains: steady conduction/
+│   │                          advection, leapfrog wave — IScalarField3D channels
+├── structural/                linear elasticity (Navier–Cauchy displacement
+│   │                          SOR, thermal-strain channel) — IVectorField3D
+├── particles/ chemistry/      Lagrangian tracking over channels; 0D mass-action
+│   │                          + Arrhenius reactor (lumped — no channels)
 ├── io/                        output channels: exd-fld v1 field stamps,
 │   │                          CSV time series, cadence policy
 │   │                          [docs/io_architecture.md]

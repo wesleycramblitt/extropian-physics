@@ -75,6 +75,21 @@ Run: caller program linking `exd-physics`, calling
 for pure/batchable stack solves — optimizer-ready). Turbocharger
 (compressor+turbine on one shaft) is a verified acceptance test.
 
+## 3c. Grid-first domains + real coupling (W10) ✅ new
+
+| System | What runs | Verification |
+|---|---|---|
+| Thermal | steady conduction + advection (SOR), fixed/insulated faces, uniform source | linear profile exact, parabolic profile 1%, Péclet warning |
+| Acoustics | scalar wave equation (leapfrog), pressure-release box | plane-wave period 1%, box eigenfrequencies 0.1–1%, energy bounded 10 periods |
+| Structural | linear elasticity displacement form (SOR), thermal-strain channel, masked traction | uniaxial (ν=0) + oedometer + thermal column EXACT; bending qualitative + load-linearity |
+| Particles | Lagrangian cloud over sampled flow channels (RK4) | ballistic exact, terminal velocity, channel advection |
+| Chemistry | 0D mass-action + Arrhenius reactor | decay/equilibrium/second-order analytic, Arrhenius ratio 0.1% |
+| Coupling | real `CouplingManager` (nearest/trilinear transfer, relaxed implicit links), `CoupledSimulation` multi-rate driver | staggered vs implicit both land on analytic; multi-rate converges |
+
+Run: caller programs link `exd-physics`; coupling is configured in code
+(domains register channels/sinks, links carry probe points) — pattern in
+`docs/coupling_and_grid_first_domains.md`.
+
 ## 4. Shared capability guarantees
 
 - **No exceptions**: `ModelStatus` error channels everywhere; invalid

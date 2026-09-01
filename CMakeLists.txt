@@ -85,7 +85,7 @@ add_library(exd-physics STATIC
     src/solver/convergence.cpp
     src/solver/integrators.cpp
 
-    # Coupling
+    # Coupling (field channels, samplers, real exchange)
     src/coupling/surface_mapping.cpp
     src/coupling/coupling_manager.cpp
 
@@ -154,6 +154,14 @@ add_library(exd-physics STATIC
     # Lumped gas-network components (W9): Greitzer plenum
     src/fluid/lumped/plenum.cpp
 
+    # Phase I grid-first domains (W10): thermal, acoustics, structural,
+    # particles, chemistry
+    src/thermal/thermal_solver.cpp
+    src/acoustics/wave_solver.cpp
+    src/structural/elasticity.cpp
+    src/particles/particle_track.cpp
+    src/chemistry/reactor.cpp
+
     # Control (PI/pitch/governor)
     src/control/pi_controller.cpp
 
@@ -185,6 +193,16 @@ set_source_files_properties(
     src/fluid/fdm3/fdm3_pressure.cpp
     src/fluid/fdm3/fdm3_boundary.cpp
     src/fluid/fdm3/fdm3_solver.cpp
+    src/fluid/turbomachinery/stage.cpp
+    src/fluid/turbomachinery/stage_stack.cpp
+    src/fluid/turbomachinery/operating_map.cpp
+    src/fluid/turbomachinery/compression_system.cpp
+    src/fluid/lumped/plenum.cpp
+    src/thermal/thermal_solver.cpp
+    src/acoustics/wave_solver.cpp
+    src/structural/elasticity.cpp
+    src/particles/particle_track.cpp
+    src/chemistry/reactor.cpp
     PROPERTIES COMPILE_OPTIONS "-O2"
 )
 

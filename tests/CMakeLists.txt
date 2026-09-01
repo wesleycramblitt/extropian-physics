@@ -108,3 +108,14 @@ add_physics_test(operating_map_test unit/fluid/turbomachinery/operating_map_test
 # Greitzer plenum + compression system driver (W9)
 add_physics_test(plenum_test unit/fluid/lumped/plenum_test.cpp)
 add_physics_test(compression_system_test unit/fluid/turbomachinery/compression_system_test.cpp)
+
+# Real coupling exchange (W10, Phase H-lite)
+add_physics_test(surface_mapping_test unit/coupling/surface_mapping_test.cpp)
+add_physics_test(coupling_manager_test unit/coupling/coupling_manager_test.cpp)
+
+# Phase I grid-first domains (W10)
+add_physics_test(thermal_solver_test unit/thermal/thermal_solver_test.cpp)
+add_physics_test(wave_solver_test unit/acoustics/wave_solver_test.cpp)
+add_physics_test(elasticity_test unit/structural/elasticity_test.cpp)
+add_physics_test(particle_track_test unit/particles/particle_track_test.cpp)
+add_physics_test(reactor_test unit/chemistry/reactor_test.cpp)
