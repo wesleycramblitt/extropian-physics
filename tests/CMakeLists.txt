@@ -96,3 +96,15 @@ add_physics_test(fdm3_output_driver_test unit/fdm3/fdm3_output_driver_test.cpp)
 
 # Steam properties + water turbine capability (Wave 8).
 add_physics_test(steam_test unit/thermo/steam_test.cpp)
+
+# Stagnation polytrope primitives + EOS density/entropy (W9).
+add_physics_test(polytropic_test unit/thermo/polytropic_test.cpp)
+
+# Turbomachinery generalization (W9): mean-line stage/stack/map
+add_physics_test(stage_test unit/fluid/turbomachinery/stage_test.cpp)
+add_physics_test(stage_stack_test unit/fluid/turbomachinery/stage_stack_test.cpp)
+add_physics_test(operating_map_test unit/fluid/turbomachinery/operating_map_test.cpp)
+
+# Greitzer plenum + compression system driver (W9)
+add_physics_test(plenum_test unit/fluid/lumped/plenum_test.cpp)
+add_physics_test(compression_system_test unit/fluid/turbomachinery/compression_system_test.cpp)

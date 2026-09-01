@@ -7,6 +7,8 @@
 
 #include <doctest/doctest.h>
 
+#include <cmath>
+
 using namespace exd::physics::thermo;
 
 TEST_CASE("Ideal gas EOS: standard sea-level air state relations")
@@ -195,4 +197,47 @@ TEST_CASE("Sutherland viscosity: non-positive temperature is a degenerate input 
 {
     CHECK(sutherland_viscosity(0.0) == doctest::Approx(0.0));
     CHECK(sutherland_viscosity(-50.0) == doctest::Approx(0.0));
+}
+TEST_CASE("Ideal gas EOS: density(p,T) inverts pressure(rho,T)")
+{
+    const IdealGasConfig config; // air defaults
+    auto eos = make_ideal_gas(config);
+    REQUIRE(eos);
+
+    exd::physics::ModelStatus status;
+    const double rho = 1.225;
+    const double T = 288.15;
+    const double p = eos->pressure(rho, T, status);
+    REQUIRE(status.ok);
+
+    const double rho_back = eos->density(p, T, status);
+    CHECK(status.ok);
+    CHECK(rho_back == doctest::Approx(rho).epsilon(1e-12));
+}
+
+TEST_CASE("Ideal gas EOS: specific_entropy matches analytic differences")
+{
+    const IdealGasConfig config; // R = 287.05, gamma = 1.4 -> cp = 1004.5
+    auto eos = make_ideal_gas(config);
+    REQUIRE(eos);
+
+    exd::physics::ModelStatus status;
+    // Isentropic compression p2/p1 = (T2/T1)^(gamma/(gamma-1)) must give ds = 0.
+    const double T1 = 288.15, p1 = 101325.0;
+    const double tau = 1.2;
+    const double pi = std::pow(tau, 1.4 / (1.4 - 1.0));
+    const double s1 = eos->specific_entropy(p1, T1, status);
+    REQUIRE(status.ok);
+    const double s2 = eos->specific_entropy(pi * p1, tau * T1, status);
+    REQUIRE(status.ok);
+    CHECK(s2 - s1 == doctest::Approx(0.0).epsilon(1e-9));
+
+    // Same temperature, higher pressure: entropy must DECREASE (ds < 0).
+    const double s3 = eos->specific_entropy(2.0 * p1, T1, status);
+    REQUIRE(status.ok);
+    CHECK(s3 - s1 < 0.0);
+
+    // Analytic value at fixed (p,T): s = cp·ln(T/Tref) − R·ln(p/pref).
+    const double expect = 1004.5 * std::log(T1 / 298.15) - 287.05 * std::log(p1 / 101325.0);
+    CHECK(s1 == doctest::Approx(expect).epsilon(1e-3));
 }

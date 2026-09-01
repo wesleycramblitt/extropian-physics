@@ -140,9 +140,19 @@ add_library(exd-physics STATIC
     src/turbine/turbine_simulator.cpp
     src/turbine/coupled_turbine.cpp
 
-    # Thermo (EOS + properties)
+    # Thermo (EOS + properties + polytropic processes)
     src/thermo/eos.cpp
     src/thermo/properties.cpp
+    src/thermo/polytropic.cpp
+
+    # Turbomachinery (W9): mean-line stage/stack, operating map, system driver
+    src/fluid/turbomachinery/stage.cpp
+    src/fluid/turbomachinery/stage_stack.cpp
+    src/fluid/turbomachinery/operating_map.cpp
+    src/fluid/turbomachinery/compression_system.cpp
+
+    # Lumped gas-network components (W9): Greitzer plenum
+    src/fluid/lumped/plenum.cpp
 
     # Control (PI/pitch/governor)
     src/control/pi_controller.cpp

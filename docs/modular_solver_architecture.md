@@ -60,9 +60,9 @@ framework**.
 | Output channels | `io` | ✅ active (exd-fld v1 stamps + timeline, CSV series, cadence policy) |
 | Turbine app coupled | `turbine::run_coupled_turbine` | ✅ active (actuator-disk in fdm3, BladeElement forces, soak-verified) |
 | Steam EOS | `thermo` | ✅ active (Clausius–Clapeyron saturation; swap to IF97 tables later) |
-| Turbomachinery (planned) | `fluid::turbomachinery` | 🔲 W9: axial mean-line stage/stack, operating map, map lookup — §10 G.1 |
-| Plenum / 0D volumes (planned) | `fluid::lumped` | 🔲 W9: Greitzer plenum, generic gas-network node — §10 G.3 |
-| Polytropic processes (planned) | `thermo` | 🔲 W9: stagnation-polytrope primitives; engine volume-polytropes stay local — §10 G.2 |
+| Turbomachinery | `fluid::turbomachinery` | ✅ W9: axial mean-line stage/stack, operating map, map lookup — §10 G.1 |
+| Plenum / 0D volumes | `fluid::lumped` | ✅ W9: Greitzer plenum, generic gas-network node — §10 G.3 |
+| Polytropic processes | `thermo` | ✅ W9: stagnation-polytrope primitives; engine volume-polytropes stay local — §10 G.2 |
 
 ### 2.2 Seams (the lego connectors)
 
@@ -736,15 +736,15 @@ Next: W9 — turbomachinery generalization (Phase G re-scope).
 | W5 | Phase F.1: PI speed governor wired into `TurbineConfig.governor` (load-fraction control, one update per step); regulation to setpoint <0.1% with mid-range throttle; batchable `simulate_engine`/`solve_fdm3` entry points stay pure | ✅ done (71 tests) |
 | W7 | Real-run DX: parametric `make_turbine_definition`, rotor-state CSV streaming in `run_coupled_turbine`, `run_fdm3_simulation` stamping driver, `docs/real_run_guide.md`. Also: CSV writer creates parent dirs; Otto heat release re-anchored at TDC volume (was over-producing past the Otto bound); γ-mismatch warning | ✅ done (73 tests) |
 | W8 | Capability assurance: hydro (water-turbine) soak with seawater properties; `thermo::steam` saturation EOS (Clausius–Clapeyron, enthalpies, vapor density); steam engine cycle upgraded to Rankine-lite (saturation-line temperatures, wet-steam quality, boiler-heat efficiency); `docs/capability_matrix.md` | ✅ done (74 tests) |
-| W9 | Phase G re-scope (§10): product-agnostic turbomachinery — `fluid::turbomachinery` axial mean-line stage + stack (total-state closure, geometry-emergent work sign, relative-Mach choking, documented envelope), `thermo::polytropic` (stagnation family; engine polytropes NOT migrated — heat-transfer stand-ins), `fluid::lumped::plenum` (Greitzer, Jacobian-verified stability), `solve_operating_map`/`sample_operating_map`, thin `simulate_compression_system` driver (motor + plenum + PI, CSV). `IEos` + `density(p,T)` + Δs. No compressor app module | next |
+| W9 | Phase G re-scope (§10): product-agnostic turbomachinery — `fluid::turbomachinery` axial mean-line stage + stack (total-state closure, geometry-emergent work sign, relative-Mach choking, documented envelope), `thermo::polytropic` (stagnation family; engine polytropes NOT migrated — heat-transfer stand-ins), `fluid::lumped::plenum` (Greitzer, Jacobian-verified stability), `solve_operating_map`/`sample_operating_map`, thin `simulate_compression_system` driver (motor + plenum + PI, CSV). `IEos` + `density(p,T)` + Δs. No compressor app module | ✅ done (80/80 tests) — see docs/turbomachinery_architecture.md |
 | (future) | Generic `bc` framework promotion (when a mesh-based consumer exists); `CouplingManager` real exchange; field writers for FDM3 stamps; compressible-grid coupling (unowned — lumped machine models carry no field channels by design, §10 G.5) | deferred |
 
 ## 16. Immediate next step
 
-**W9 — turbomachinery generalization** (§10): `thermo::polytropic` +
-`fluid::turbomachinery::stage` first (the two foundational modules), then
-stack → plenum → map tools → system driver/tests. Phases A–F are done;
-Phase G is re-scoped as product-agnostic capability; later ordering per
-the product doctrine (§10): prefer broad-but-simple domain coverage with
-documented envelopes over deep fidelity in one domain — Phase I (grid-first
-simple domains) and Phase H-lite machinery outrank deep FVM/FEM work.
+**W9 shipped (80/80 tests).** Next per the product doctrine (§10 —
+broad-but-simple domain coverage with documented envelopes over deep
+fidelity): Phase I grid-first domains (thermal, structural, acoustics,
+particles, chemistry) and Phase H-lite coupling machinery — the 
+`CouplingManager` real exchange that the engine/turbine/compression
+demos currently wire ad hoc. Deep FVM/FEM work (Phase J) stays
+deliberately last.

@@ -60,6 +60,21 @@ Boundary of the model: single-constant latent heat (no superheat schedule,
 no wetness-at-exhaust reporting); swap `SteamConstants` for IF97 tables
 without touching the cycle.
 
+## 3b. Compressor / turbomachinery — mean-line machine capability (W9) ✅ new
+
+| Piece | What runs | Status |
+|---|---|---|
+| Compressor row | axial mean-line stage/stack: velocity-triangle Euler work, polytropic exit state (total-state closure), relative-Mach choke guard, documented envelope (M_rel < 0.7, hub/tip > 0.5) | real solver (geometry-emergent sense: the SAME code produces compressor AND turbine — reversal + turbocharger tests) |
+| Operating map | `solve_operating_map` (ω × ṁ sweep → π/η/T surfaces, surge + choke lines) / `sample_operating_map` (bilinear; accepts rig-test maps) | real (surge line = dπ/dṁ = 0 surrogate, documented) |
+| Surge dynamics | `fluid::lumped::plenum` — Greitzer 2-state cell on `IEos`, Jacobian-verified stability, surge limit cycle | real (verified both sides of the stability boundary) |
+| Drive + control | Phase D DC motor + Phase C PI governor (throttle-gain modulation) | real (spin-up settles at operating point; governing 0.0002%) |
+| Output | per-step CSV (t, ω, p, ṁ, π, torques, gain) | real (one row per step) |
+
+Run: caller program linking `exd-physics`, calling
+`fluid::turbomachinery::simulate_compression_system` (or `solve_stage_stack`
+for pure/batchable stack solves — optimizer-ready). Turbocharger
+(compressor+turbine on one shaft) is a verified acceptance test.
+
 ## 4. Shared capability guarantees
 
 - **No exceptions**: `ModelStatus` error channels everywhere; invalid

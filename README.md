@@ -36,6 +36,12 @@ include/exd/physics/ and src/
 ├── turbine/                   turbine app: step/simulate over the generic
 │   │                          stack, parametric builder, coupled turbine-in-grid
 │   │                          driver [docs/turbine_coupling_architecture.md]
+├── turbomachinery/            product-agnostic axial mean-line: stage/stack
+│   │                          (geometry-emergent compressor/turbine sense),
+│   │                          operating-map solver + sampler, compression-system
+│   │                          driver [docs/turbomachinery_architecture.md]
+├── lumped/                    Greitzer plenum — generic 0D gas-volume node
+│   │                          (2-state surge cell, injectable characteristics)
 ├── engine/                    slider-crank engines: Otto (Wiebe) + steam
 │   │                          (Rankine-lite), governor, CSV motion output
 │   │                          [docs/engine_architecture.md]
@@ -73,6 +79,8 @@ points. Conventions: [`docs/agent_guide.md`](docs/agent_guide.md).
 | Steam engine | `engine::simulate_engine` (Rankine-lite) | real 0D/1D cycle + saturation EOS |
 | Standalone 3D CFD | `fluid::fdm3::solve_fdm3` / `run_fdm3_simulation` | incompressible FDM |
 | Reduced-order turbine | `bem::solve_turbine` | BEM + corrections |
+| Compressor system | `fluid::turbomachinery::simulate_compression_system` (stage stack + plenum + DC motor + governor) | mean-line + Greitzer |
+| Turbocharger (balance) | acceptance test: compressor + turbine stages on one shaft | mean-line, one code path |
 
 ## Level-3 BEM turbine solver (reduced-order)
 
