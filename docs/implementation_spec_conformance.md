@@ -229,4 +229,6 @@ consumers are in-repo and are updated).
 | W15d | Docs/README/capability matrix updated; 107 tests green | ✅ done |
 | W15e | PRESET-CLASS CORRECTION (§14/§52): chiplet-board and 2R-arm product presets replaced by CLASS-level assemblies — `physics::thermal::heterogeneous` (per-node k/q, regions, per-face BC kinds) + `presets::thermal::steady_conduction`, and N-link `physics::robotics::manipulator` + `presets::robotics::manipulator_trajectory`. The user imports CAD/geometry/BCs/parameters into the config; the solver runs. Conduction operator rebuilt as the eliminated-Dirichlet + symmetric half-row form; honest node-counting power accounting in fixtures; chiplet = test fixture only | ✅ done |
 | W15f | Docs updated; 108 tests green | ✅ done |
+| PLAN | External-geometry boundary + general multibody roadmap recorded in `docs/multibody_architecture.md`: geometry authoring/MJCF/mesh loaders live in the external repo; the engine owns format-neutral model-description contracts; multibody generalized to arbitrary joint types (revolute/slide/ball/free/…) via the reduced-coordinates-for-trees + maximal-coordinates-with-constraints design | ✅ planned |
+| M1–M5 | Multibody implementation phases (tree joints → constraints → contacts → actuators → description reader) — not scheduled | roadmap |
 

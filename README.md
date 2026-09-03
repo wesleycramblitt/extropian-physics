@@ -118,6 +118,7 @@ Requires: CMake 3.21+, C++23, `extropian-core`, `extropian-geometry`.
 - `docs/real_run_guide.md` — run recipes.
 - `docs/output_channels.md` — output contract for the animation/visualization repo.
 - `docs/modular_solver_architecture.md` — historical roadmap (phases A–J, waves W0–W12), superseded by the spec.
+- `docs/multibody_architecture.md` — external-geometry-repo boundary, the model-description contract, and the general multibody roadmap (arbitrary joints/constraints).
 
 ## License
 
