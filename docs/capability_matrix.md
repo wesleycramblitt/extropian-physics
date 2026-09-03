@@ -22,8 +22,8 @@ entry points below (pattern + recipes: `docs/real_run_guide.md`).
 | System | Run entry | Fidelity/anchors |
 |---|---|---|
 | Electrostatics (fixed) | `physics::electromagnetics::solve_static_field` + `FaceKind::Neumann` | the parallel-plate capacitor with Neumann side walls reproduces the EXACT discrete linear bridge (1e-7) and E = −V/L; the grounded-box sag (real physics) documented |
-| Robotic arm | `physics::robotics` (2R arm) + `presets::robotics::run_arm_trajectory` | minimal-coordinate revolute joints, mass coupling, Coriolis, torque limits, soft joint stops, PD anti-windup; energy conserved in free spin, setpoint tracking < 1e-3 rad, stops bound the excursion |
-| Chiplet board | `presets::electronics::solve_chiplet_board` | heterogeneous-k steady conduction (per-node k, harmonic-mean face flux, chip sources, copper spreaders, sink faces); chip power == sink flux (discrete energy balance), peak ∝ power, spreader lowers the peak |
+| Serial manipulator (CLASS) | `physics::robotics::step_manipulator` (N links) + `presets::robotics::run_manipulator_trajectory` | any serial arm from the user's link/joint/gain data: mass coupling, Coriolis, torque limits, soft stops, PD anti-windup; energy conserved, tracking < 1e-3 rad, stops bound |
+| Heat conduction (CLASS) | `physics::thermal::solve_heterogeneous_conduction` + `presets::thermal::run_steady_conduction` | per-node k/q fields (the CAD/import contract) or box regions, per-face FixedValue/Insulated BCs; eliminated-Dirichlet + symmetric half-row operator, CG; source == sink flux exactly, linearity, spreader cooling, exact 1D bridge. Chiplets/heat sinks/reactor walls are fixtures, not presets |
 
 ---
 ## 1. Wind turbine / water turbine — real multiphysics over a mesh

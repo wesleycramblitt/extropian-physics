@@ -71,9 +71,10 @@ add_library(exd-physics STATIC
 
     # physics — particles, reaction, species transport, porous media, rigid bodies, robotics, structural, thermal, thermo
     src/physics/particles/particle_track.cpp
-    src/physics/robotics/arm.cpp
+    src/physics/robotics/manipulator.cpp
     src/physics/species/species_solver.cpp
     src/physics/porous/porous_solver.cpp
+    src/physics/thermal/heterogeneous.cpp
     src/physics/reaction/reactor.cpp
     src/physics/rigid_body/moment_integration.cpp
     src/physics/rigid_body/moment_models.cpp
@@ -92,8 +93,7 @@ add_library(exd-physics STATIC
     src/presets/multiphysics/joule_heating.cpp
     src/presets/multiphysics/species_in_flow.cpp
     src/presets/multiphysics/thermal_stress.cpp
-    src/presets/electronics/chiplet_board.cpp
-    src/presets/robotics/arm_trajectory.cpp
+    src/presets/robotics/manipulator_trajectory.cpp
     src/presets/engine/crank_mechanism.cpp
     src/presets/engine/engine_simulator.cpp
     src/presets/engine/gas_force.cpp

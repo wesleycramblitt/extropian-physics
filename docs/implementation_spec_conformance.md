@@ -227,4 +227,6 @@ consumers are in-repo and are updated).
 | W15b | Robotics: 2R articulated arm (minimal coordinates, revolute joints, torque limits, joint stops, PD anti-windup) + arm-trajectory preset — energy, tracking, stop, gravity-compensation anchors | ✅ done |
 | W15c | Chiplet boards: heterogeneous-conduction board preset (per-node k, harmonic-mean face fluxes, chip sources, spreaders, sink faces) on the shared affine-operator + CG path; energy balance + linearity + spreader anchors | ✅ done |
 | W15d | Docs/README/capability matrix updated; 107 tests green | ✅ done |
+| W15e | PRESET-CLASS CORRECTION (§14/§52): chiplet-board and 2R-arm product presets replaced by CLASS-level assemblies — `physics::thermal::heterogeneous` (per-node k/q, regions, per-face BC kinds) + `presets::thermal::steady_conduction`, and N-link `physics::robotics::manipulator` + `presets::robotics::manipulator_trajectory`. The user imports CAD/geometry/BCs/parameters into the config; the solver runs. Conduction operator rebuilt as the eliminated-Dirichlet + symmetric half-row form; honest node-counting power accounting in fixtures; chiplet = test fixture only | ✅ done |
+| W15f | Docs updated; 108 tests green | ✅ done |
 

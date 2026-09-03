@@ -86,8 +86,8 @@ sim.run(st);                     // converges to the 400→350→300 joined prof
 | Thermal stress | `presets::multiphysics::run_thermal_stress` | free-bar expansion u(L) = α·g·L²/2 |
 | Joule heating | `presets::multiphysics::run_joule_heating` (EM → thermal q-channel) | source/outflux energy balance, heating confirmed |
 | Species in flow | `presets::multiphysics::run_species_in_flow` | outlet c = c_in·exp(−k·L/u) within 5% |
-| Robotic arm | `physics::robotics` (2R, revolute joints, torque limits, stops, PD) + `presets::robotics::run_arm_trajectory` | energy conserved, PD tracking < 1e-3 rad, stops bound motion |
-| Chiplet board | `presets::electronics::solve_chiplet_board` (heterogeneous-k conduction, chips, spreaders) | chip power = sink flux, peak scales with power, spreader cools |
+| Serial manipulator | `physics::robotics` (N-link, revolute joints, torque limits, stops, PD) + `presets::robotics::run_manipulator_trajectory` | energy conserved, PD tracking < 1e-3 rad, stops bound motion, 3-link runs the same solver |
+| Heat conduction (CLASS) | `physics::thermal::solve_heterogeneous_conduction` + `presets::thermal::run_steady_conduction` — per-node k/q (data-driven), material/source regions, per-face BCs | source = sink flux (discrete energy balance), peak ∝ power, spreader cools, exact 1D bridge; chiplet boards & heat sinks = one class of config |
 | Electrostatics | `physics::electromagnetics` Neumann faces | exact linear discrete bridge (1e-7) |
 | Fidelity profiles | `fidelity::profile(FidelityLevel::…)` | REALTIME→HIGH_FIDELITY defaults |
 
@@ -108,7 +108,7 @@ cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON \
 ```
 
 Requires: CMake 3.21+, C++23, `extropian-core`, `extropian-geometry`.
-107 unit tests (doctest) — the full suite runs in ~60 s.
+108 unit tests (doctest) — the full suite runs in ~60 s.
 
 ## Docs
 
