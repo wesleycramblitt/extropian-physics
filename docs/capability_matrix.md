@@ -5,6 +5,19 @@ model), and the exact configuration to run it. The library is a static C++
 library; a "run" is a caller program linking `exd-physics` and calling the
 entry points below (pattern + recipes: `docs/real_run_guide.md`).
 
+## 0. W14 FDM domain breadth + multiphysics presets
+
+| System | Run entry | Fidelity/anchors |
+|---|---|---|
+| Species transport | `physics::species::solve_species` | operator-split advection/diffusion/reaction on the core runtime; exact decay e^{−kt}, A→B conservation, advective-decay steady profile, diffusion variance 2Dt |
+| Elastic waves | `physics::structural::solve_elasticity(config.transient)` | velocity-Verlet + mirror ghosts; P-wave arrival within 2%, flight-energy drift < 5% |
+| Porous media | `physics::porous::solve_porous` | Darcy pressure diffusion, implicit CG; direct steady solve via the affine-operator linear part; exact linear steady profile |
+| Aeroacoustics | `presets::multiphysics::run_aeroacoustics` | fdm3 duct → acoustics mean flow; arrival-window anchor vs the plain-wave control |
+| Thermal stress | `presets::multiphysics::run_thermal_stress` | thermal channel → thermal strain; free-bar expansion u(L) = α·g·L²/2 within 2% |
+| Joule heating | `presets::multiphysics::run_joule_heating` | static-field E → thermal source channel; steady power-balance (source = outflux) |
+| Species in flow | `presets::multiphysics::run_species_in_flow` | fdm3 channel → species advection-decay; outlet c matches exp(−k·L/u) within 5% |
+
+---
 ## 1. Wind turbine / water turbine — real multiphysics over a mesh
 
 | Piece | What runs | Status |

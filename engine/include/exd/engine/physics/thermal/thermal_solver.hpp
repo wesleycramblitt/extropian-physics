@@ -99,6 +99,9 @@ struct ThermalConfig {
     };
 
     double source_density = 0.0;                 // uniform volumetric heating (W/m^3)
+    // Optional per-node volumetric heating channel (W/m³), sampled at the
+    // nodes; overrides source_density where sampled (Joule heating coupling).
+    const exd::engine::coupling::IScalarField3D* source_channel = nullptr;
     std::array<double, 3> body_velocity = {0.0, 0.0, 0.0}; // uniform advecting velocity (m/s)
     // Optional per-node advection: when non-null, sampled at every node and
     // overrides body_velocity (out-of-bounds samples fall back to

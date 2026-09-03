@@ -44,17 +44,16 @@ inline IterativeSolveReport solve_cg(const LinearOperator& op,
     axpy(-1.0, tmp.data(), r.data());
 
     const double b_norm = norm2(b.data());
-    if (b_norm == 0.0)
-    {
-        x.assign(0.0);
-        rep.converged = true;
-        rep.final_residual = 0.0;
-        return rep;
-    }
+    // Homogeneous solves (b == 0) are valid when the operator is AFFINE with
+    // the boundary values built in (eliminated-Dirichlet operators): the
+    // convergence criterion is then the ABSOLUTE residual (relative to b is
+    // undefined).
+    const bool homogeneous = (b_norm == 0.0);
 
     double rho = dot(r.data(), r.data());
-    rep.final_residual = std::sqrt(rho) / b_norm;
-    if (rep.final_residual < cfg.tolerance)
+    double r_abs = std::sqrt(rho);
+    rep.final_residual = homogeneous ? r_abs : r_abs / b_norm;
+    if (rep.final_residual < cfg.tolerance || r_abs < cfg.min_absolute_residual)
     {
         rep.converged = true;
         return rep;
@@ -75,10 +74,10 @@ inline IterativeSolveReport solve_cg(const LinearOperator& op,
         axpy(alpha, p.data(), x.data());
         axpy(-alpha, tmp.data(), r.data());
         const double rho_new = dot(r.data(), r.data());
+        const double r_new = std::sqrt(rho_new);
         rep.iterations = it;
-        rep.final_residual = std::sqrt(rho_new) / b_norm;
-        if (rep.final_residual < cfg.tolerance ||
-            std::sqrt(rho_new) < cfg.min_absolute_residual)
+        rep.final_residual = homogeneous ? r_new : r_new / b_norm;
+        if (rep.final_residual < cfg.tolerance || r_new < cfg.min_absolute_residual)
         {
             rep.converged = true;
             return rep;

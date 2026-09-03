@@ -90,6 +90,46 @@ private:
     const core::IOperator& inner_;
 };
 
+/// Scaled operator: (c·A)·x = c·(A·x) — e.g. K·(−Δ) for steady Darcy/heat
+/// solves.  Composes with NegatedOperator without global assembly (§35).
+class ScaledOperator final : public core::IOperator
+{
+public:
+    ScaledOperator(const core::IOperator& inner, double scale)
+        : inner_(inner), scale_(scale) {}
+    const core::OperatorInfo& info() const override { return inner_.info(); }
+    bool apply(const core::Field& in, core::Field& out, core::ModelStatus& status) const override
+    {
+        if (!inner_.apply(in, out, status)) return false;
+        for (auto& v : out.data()) v *= scale_;
+        return true;
+    }
+    bool apply_transpose(const core::Field& in, core::Field& out,
+                         core::ModelStatus& status) const override
+    {
+        if (!inner_.apply_transpose(in, out, status)) return false;
+        for (auto& v : out.data()) v *= scale_;
+        return true;
+    }
+    bool diagonal(core::Field& out, core::ModelStatus& status) const override
+    {
+        if (!inner_.diagonal(out, status)) return false;
+        for (auto& v : out.data()) v *= scale_;
+        return true;
+    }
+    bool jacobian_vector_product(const core::Field& x, const core::Field& v,
+                                 core::Field& out, core::ModelStatus& status) const override
+    {
+        if (!inner_.jacobian_vector_product(x, v, out, status)) return false;
+        for (auto& vv : out.data()) vv *= scale_;
+        return true;
+    }
+
+private:
+    const core::IOperator& inner_;
+    double scale_;
+};
+
 /// Absolute + relative residual criterion for iterative solvers.
 struct IterativeSolverConfig
 {

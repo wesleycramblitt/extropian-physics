@@ -24,7 +24,8 @@ engine/
 │   ├── discretization/  FDM operators (gradient/divergence/curl/Laplacian/advection) + matrix-free ops
 │   ├── numerics/        ODE integrators (8) · time stepping · CG/GMRES/BiCGSTAB · Newton/fixed-point
 │   ├── physics/         fluid (fdm, fdm3, forces, BEM, lumped, turbomachinery) · thermal ·
-│   │                    structural · electromagnetics · reaction · particles · rigid_body ·
+│   │                    structural (static + transient) · electromagnetics · reaction ·
+│   │                    particles · rigid_body · species transport · porous media ·
 │   │                    thermo · control · acoustics
 │   ├── coupling/        field channels · samplers · mapping · CouplingManager · contracts ·
 │   │                    compatibility rules · Simulation pipeline · solver plugins
@@ -78,6 +79,13 @@ sim.run(st);                     // converges to the 400→350→300 joined prof
 | Aeroacoustic-lite | `physics::acoustics::simulate_wave` | c±u pulse arrival within 5% |
 | FSI-lite (W12) | `coupling::simulate_drag_body` | terminal v_t ±10%, drag→mg ±5% |
 | Matrix-free Poisson | `numerics::solve_cg/gmres/bicgstab` on `discretization::fdm::FdmLaplacianOperator` | analytic sin³ verification |
+| Species transport | `physics::species::solve_species` (advection–diffusion–reaction, operator-composed) | exact decay, A→B conservation, advective-decay profile, variance 2Dt |
+| Elastic waves | `physics::structural::solve_elasticity` (transient) | P-wave arrival within 2%, flight energy conserved |
+| Porous media | `physics::porous::solve_porous` (Darcy, implicit CG + direct steady) | exact linear steady, variance 2Kt, linear mass growth |
+| Aeroacoustics | `presets::multiphysics::run_aeroacoustics` (fdm3 → acoustics mean flow) | pulse arrives on schedule, mean flow injected |
+| Thermal stress | `presets::multiphysics::run_thermal_stress` | free-bar expansion u(L) = α·g·L²/2 |
+| Joule heating | `presets::multiphysics::run_joule_heating` (EM → thermal q-channel) | source/outflux energy balance, heating confirmed |
+| Species in flow | `presets::multiphysics::run_species_in_flow` | outlet c = c_in·exp(−k·L/u) within 5% |
 | Fidelity profiles | `fidelity::profile(FidelityLevel::…)` | REALTIME→HIGH_FIDELITY defaults |
 
 ## Building
@@ -97,7 +105,7 @@ cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON \
 ```
 
 Requires: CMake 3.21+, C++23, `extropian-core`, `extropian-geometry`.
-100 unit tests (doctest) — the full suite runs in ~35 s.
+104 unit tests (doctest) — the full suite runs in ~40 s.
 
 ## Docs
 

@@ -260,6 +260,7 @@ double sor_sweep(const ThermalConfig& config, std::vector<double>& T,
 
     const double k = config.material.conductivity;
     const double rho_cp = config.material.density * config.material.specific_heat;
+    const bool has_source_channel = config.source_channel != nullptr;
     const double source = config.source_density;
     constexpr double kOmega = 1.5;
 
@@ -280,10 +281,19 @@ double sor_sweep(const ThermalConfig& config, std::vector<double>& T,
                 axis_neighbors(g, T, ii, jj, kk, 2, tm_z, tp_z);
 
                 // Conducting part of the implicit numerator and diagonal.
+                double qsource = source;
+                if (has_source_channel)
+                {
+                    const std::array<double, 3> p{
+                        g.origin[0] + ii * g.spacing[0],
+                        g.origin[1] + jj * g.spacing[1],
+                        g.origin[2] + kk * g.spacing[2]};
+                    config.source_channel->sample(p, qsource);
+                }
                 double numerator = k * ((tm_x + tp_x) * Dx +
                                         (tm_y + tp_y) * Dy +
                                         (tm_z + tp_z) * Dz) +
-                                   source;
+                                   qsource;
                 double denominator = 2.0 * k * (Dx + Dy + Dz);
 
                 // First-order upwind advection with the per-node velocity.
@@ -401,10 +411,32 @@ ThermalResult solve_thermal(const ThermalConfig& config, ModelStatus& status)
     result.min_temperature = *std::min_element(T.begin(), T.end());
 
     // total_power = sum source*cell_volume over the (nx-1)(ny-1)(nz-1) cells.
+    const bool has_source_channel = config.source_channel != nullptr;
     const double cell_volume = dx * dy * dz;
-    result.total_power = config.source_density * static_cast<double>(nx - 1) *
-                         static_cast<double>(ny - 1) * static_cast<double>(nz - 1) *
-                         cell_volume;
+    if (has_source_channel)
+    {
+        // integrate the sampled source over the (nx-1)(ny-1)(nz-1) cells,
+        // sampled at the cell MIN corner (the same convention the preset's
+        // q-grid power integral uses)
+        double power = 0.0;
+        for (int kk = 0; kk < nz - 1; ++kk)
+            for (int jj = 0; jj < ny - 1; ++jj)
+                for (int ii = 0; ii < nx - 1; ++ii)
+                {
+                    const std::array<double, 3> p{
+                        g.origin[0] + ii * g.spacing[0],
+                        g.origin[1] + jj * g.spacing[1],
+                        g.origin[2] + kk * g.spacing[2]};
+                    double q = 0.0;
+                    config.source_channel->sample(p, q);
+                    power += q * cell_volume;
+                }
+        result.total_power = power;
+    }
+    else
+        result.total_power = config.source_density * static_cast<double>(nx - 1) *
+                             static_cast<double>(ny - 1) * static_cast<double>(nz - 1) *
+                             cell_volume;
 
     result.temperature.origin = g.origin;
     result.temperature.spacing = g.spacing;

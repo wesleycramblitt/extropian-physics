@@ -31,6 +31,7 @@
 #include <exd/engine/core/model_status.hpp>
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -82,6 +83,19 @@ struct ElasticityConfig
 
     double tolerance = 1e-10;         // SOR relative-residual target
     uint64_t max_iterations = 200000; // SOR sweep limit, > 0
+
+    // ── transient (elastic waves, spec §11 Structural / §66) ──
+    // Solves rho d²u/dt² = div sigma + rho·f with velocity-Verlet
+    // (symplectic), the same ghost/free-surface stencils as the static
+    // solver, Dirichlet re-pinning and a CFL clamp dt <= 0.8·h/c_p.
+    bool transient = false;           // true → time-march instead of SOR
+    double density = 7850.0;          // kg/m³; c_p = sqrt((lam+2mu)/rho)
+    double dt = 0.0;                  // s; 0 → adaptive 0.8·h_min/c_p
+    uint64_t max_steps = 10000;
+    std::vector<double> initial_displacement;  // 3·N flat; empty = zeros
+    std::vector<double> initial_velocity;      // 3·N flat; empty = zeros
+    int32_t probe_index = -1;         // flat node (c*N+n uses component 0 of
+                                      // this node's x-displacement history)
 };
 
 /// Validate the elastic config.  Fatal problems return false and fill
@@ -102,7 +116,26 @@ struct ElasticityResult
     uint64_t iterations = 0;            // SOR sweeps performed
     double strain_energy = 0.0;         // sum over cells of 0.5*sigma:eps*cell_volume in J
     double max_effective_strain = 0.0;  // max von-Mises equivalent strain over nodes
+
+    // ── transient ──
+    exd::engine::coupling::StructuredVectorGrid velocity; // final velocity (transient)
+    uint64_t steps = 0;                 // steps taken
+    double dt_used = 0.0;               // step actually used (CFL-clamped)
+    double time_elapsed = 0.0;          // steps * dt_used
+    double kinetic_energy = 0.0;        // final KE (J)
+    double energy_drift = 0.0;          // |(KE+PE)_f − (KE+PE)_0| / scale
+    double max_displacement = 0.0;      // max |u| over the run
+    std::vector<double> probe_history;  // u_x at probe_index per step (transient)
 };
+
+/// Longitudinal (P) wave speed: sqrt((lam + 2·mu)/rho).
+inline double p_wave_speed(const ElasticMaterialConfig& material, double density)
+{
+    const double nu = material.poisson_ratio;
+    const double lam = material.elastic_modulus * nu / ((1.0 + nu) * (1.0 - 2.0 * nu));
+    const double mu = material.elastic_modulus / (2.0 * (1.0 + nu));
+    return std::sqrt((lam + 2.0 * mu) / density);
+}
 
 /// Solve the static displacement field.  `temperature_channel` is optional:
 /// when it is non-null and thermal_expansion_coefficient > 0, thermal strain

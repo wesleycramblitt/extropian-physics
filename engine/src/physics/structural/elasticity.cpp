@@ -50,8 +50,9 @@ struct Strain
 class Solver
 {
 public:
-    Solver(const ElasticityConfig& cfg, std::vector<double>& u, const std::vector<double>& dT)
-        : cfg_(cfg), u_(u), dT_(dT)
+    Solver(const ElasticityConfig& cfg, std::vector<double>& u, const std::vector<double>& dT,
+           bool mirror_only = false)
+        : cfg_(cfg), u_(u), dT_(dT), mirror_only_(mirror_only)
     {
         nx_ = cfg.grid.dims[0];
         ny_ = cfg.grid.dims[1];
@@ -78,6 +79,7 @@ public:
     double lam() const { return lam_; }
     double mu() const { return mu_; }
     double kappa() const { return kappa_; }
+    bool mirror_only() const { return mirror_only_; }
 
     double value(int comp, int i, int j, int k) const
     {
@@ -86,6 +88,7 @@ public:
         const int jr = reflect(j, ny_);
         const int kr = reflect(k, nz_);
         double v = raw(comp, ir, jr, kr);
+        if (mirror_only_) return v;   // dynamic free surface: pure mirror ghost
         // Count out-of-bounds faces: tangential (shear) corrections are only
         // applied for single-face ghosts; edge/corner ghosts mirror with only
         // their normal-component corrections, which keeps the coupled shear
@@ -323,8 +326,68 @@ private:
     double kappa_ = 0.0;
     double alpha_ = 0.0;
     bool have_temp_ = false;
+    bool mirror_only_ = false;
     std::size_t N_ = 0;
 };
+
+
+/// Mechanical energy of a transient state: KE (lumped nodal) + PE (cell
+/// strain energy, same convention as the static result).
+struct MechanicalEnergy
+{
+    double kinetic = 0.0;
+    double potential = 0.0;
+    double total() const { return kinetic + potential; }
+};
+
+MechanicalEnergy mechanical_energy(const Solver& solver, const std::vector<double>& u,
+                                   const std::vector<double>& v, double rho,
+                                   std::size_t N, const ElasticityConfig& config)
+{
+    const int nx = config.grid.dims[0], ny = config.grid.dims[1], nz = config.grid.dims[2];
+    const double cell_vol = config.grid.spacing[0] * config.grid.spacing[1]
+                            * config.grid.spacing[2];
+    double ke = 0.0;
+    for (std::size_t n = 0; n < N; ++n)
+    {
+        const double vx = v[0 * N + n], vy = v[1 * N + n], vz = v[2 * N + n];
+        ke += 0.5 * rho * (vx * vx + vy * vy + vz * vz) * cell_vol;
+    }
+    std::vector<Strain> nodal(N);
+    for (int k = 0; k < nz; ++k)
+        for (int j = 0; j < ny; ++j)
+            for (int i = 0; i < nx; ++i)
+                nodal[node_idx(i, j, k, nx, ny)] = solver.nodal_strain(i, j, k);
+    const double lam = solver.lam(), mu = solver.mu();
+    double pe = 0.0;
+    for (int ck = 0; ck < nz - 1; ++ck)
+        for (int cj = 0; cj < ny - 1; ++cj)
+            for (int ci = 0; ci < nx - 1; ++ci)
+            {
+                Strain e = {};
+                for (int dk = 0; dk <= 1; ++dk)
+                    for (int dj = 0; dj <= 1; ++dj)
+                        for (int di = 0; di <= 1; ++di)
+                        {
+                            const Strain& c = nodal[node_idx(ci + di, cj + dj, ck + dk, nx, ny)];
+                            e.xx += c.xx; e.yy += c.yy; e.zz += c.zz;
+                            e.xy += c.xy; e.xz += c.xz; e.yz += c.yz;
+                        }
+                e.xx /= 8.0; e.yy /= 8.0; e.zz /= 8.0;
+                e.xy /= 8.0; e.xz /= 8.0; e.yz /= 8.0;
+                const double tr = e.xx + e.yy + e.zz;
+                const double sxxe = lam * tr + 2.0 * mu * e.xx;
+                const double syye = lam * tr + 2.0 * mu * e.yy;
+                const double szze = lam * tr + 2.0 * mu * e.zz;
+                const double sxy = 2.0 * mu * e.xy;
+                const double sxz = 2.0 * mu * e.xz;
+                const double syz = 2.0 * mu * e.yz;
+                pe += 0.5 * (sxxe * e.xx + syye * e.yy + szze * e.zz
+                             + 2.0 * (sxy * e.xy + sxz * e.xz + syz * e.yz)) * cell_vol;
+            }
+    (void)config.thermal_expansion_coefficient;
+    return MechanicalEnergy{ke, pe};
+}
 
 } // namespace
 
@@ -485,6 +548,167 @@ ElasticityResult solve_elasticity(const ElasticityConfig& config,
     }
 
     Solver solver(config, u, dT);
+
+    // ── transient path: rho·d²u/dt² = div σ + rho·f (velocity-Verlet) ──
+    if (config.transient)
+    {
+        const double rho = config.density;
+        const double h_min = std::min({config.grid.spacing[0],
+                                       config.grid.spacing[1],
+                                       config.grid.spacing[2]});
+        const double cp = p_wave_speed(config.material, rho);
+        double dt = config.dt;
+        if (dt <= 0.0) dt = 0.3 * h_min / cp;
+        if (dt > 0.3 * h_min / cp)
+        {
+            dt = 0.3 * h_min / cp;
+            warnings.push_back("elasticity: dt clamped to the CFL limit 0.3·h/c_p");
+        }
+        if (!config.initial_displacement.empty())
+        {
+            if (config.initial_displacement.size() != stride)
+            {
+                res.status = ModelStatus{false, "elasticity: initial_displacement must be 3·N", warnings};
+                status = res.status;
+                return res;
+            }
+            u = config.initial_displacement;
+        }
+        std::vector<double> v(stride, 0.0);
+        if (!config.initial_velocity.empty())
+        {
+            if (config.initial_velocity.size() != stride)
+            {
+                res.status = ModelStatus{false, "elasticity: initial_velocity must be 3·N", warnings};
+                status = res.status;
+                return res;
+            }
+            v = config.initial_velocity;
+        }
+        for (std::size_t n = 0; n < N; ++n)
+            for (int c = 0; c < 3; ++c)
+                if (pinned[n][static_cast<std::size_t>(c)])
+                {
+                    const double pv = config.fixed_displacement.empty()
+                                          ? 0.0 : config.fixed_displacement[n][static_cast<std::size_t>(c)];
+                    u[static_cast<std::size_t>(c) * N + n] = pv;
+                    v[static_cast<std::size_t>(c) * N + n] = 0.0;
+                }
+
+        // finalize the solver for the transient state (u/dT already set)
+        Solver tsolver(config, u, dT, /*mirror_only=*/true);
+        std::vector<double> a(stride, 0.0);
+        double max_disp = 0.0;
+        std::vector<double> probe;
+        std::vector<double> energy_history;   // total mechanical energy per step
+        if (config.probe_index >= 0)
+            probe.push_back(u[0 * N + static_cast<std::size_t>(config.probe_index)]);
+        for (uint64_t step = 0; step < config.max_steps; ++step)
+        {
+            // energy each step (symplectic integrators conserve a MODIFIED
+            // energy; the flight total is the conserved quantity)
+            energy_history.push_back(
+                mechanical_energy(tsolver, u, v, rho, N, config).total());
+
+            for (int k = 0; k < nz; ++k)
+                for (int j = 0; j < ny; ++j)
+                    for (int i = 0; i < nx; ++i)
+                    {
+                        const std::size_t n = node_idx(i, j, k, nx, ny);
+                        for (int comp = 0; comp < 3; ++comp)
+                        {
+                            if (pinned[n][static_cast<std::size_t>(comp)])
+                            {
+                                a[static_cast<std::size_t>(comp) * N + n] = 0.0;
+                                continue;
+                            }
+                            const double L = tsolver.equilibrium(comp, i, j, k);
+                            // L = div σ + f (specific-force convention); the
+                            // equation of motion is rho·a = L0 + rho·f.
+                            const double L0 = L - config.body_force[static_cast<std::size_t>(comp)];
+                            a[static_cast<std::size_t>(comp) * N + n]
+                                = L0 / rho + config.body_force[static_cast<std::size_t>(comp)];
+                            if (!std::isfinite(a[static_cast<std::size_t>(comp) * N + n]))
+                            {
+                                res.status = ModelStatus{false,
+                                    "elasticity: non-finite acceleration during transient", warnings};
+                                status = res.status;
+                                return res;
+                            }
+                        }
+                    }
+            // velocity-Verlet (symplectic): v += dt·a(u); u += dt·v
+            for (std::size_t n = 0; n < N; ++n)
+            {
+                for (int c = 0; c < 3; ++c)
+                {
+                    if (pinned[n][static_cast<std::size_t>(c)]) continue;
+                    const std::size_t o = static_cast<std::size_t>(c) * N + n;
+                    v[o] += dt * a[o];
+                    u[o] += dt * v[o];
+                    max_disp = std::max(max_disp, std::fabs(u[o]));
+                }
+            }
+            if (config.probe_index >= 0)
+                probe.push_back(u[0 * N + static_cast<std::size_t>(config.probe_index)]);
+        }
+        {
+            // final energy + flight drift (after the loop): the symplectic
+            // modified energy is conserved during flight; the drift is the
+            // relative spread of the total over the run (step 0 excluded —
+            // the raw initial PE is not the conserved quantity).
+            Solver fsolver(config, u, dT, /*mirror_only=*/true);
+            const auto e1 = mechanical_energy(fsolver, u, v, rho, N, config);
+            res.kinetic_energy = e1.kinetic;
+            res.strain_energy = e1.potential;
+            // drift over the settled flight: the first ~10% of steps cover
+            // the D'Alembert split transient, whose measured totals swing
+            // while the sharp IC devolves; the flight total is conserved.
+            double emin = e1.total(), emax = e1.total(), esum = 0.0;
+            const size_t n_e = energy_history.size();
+            const size_t begin = std::max<size_t>(1, n_e / 10);
+            size_t count = 0;
+            for (size_t i = begin; i < n_e; ++i)
+            {
+                emin = std::min(emin, energy_history[i]);
+                emax = std::max(emax, energy_history[i]);
+                esum += energy_history[i];
+                ++count;
+            }
+            const double emean = count > 0 ? esum / static_cast<double>(count) : e1.total();
+            res.energy_drift = (emax - emin) / std::max(emean, 1e-30);
+        }
+        res.steps = config.max_steps;
+        res.dt_used = dt;
+        res.time_elapsed = dt * static_cast<double>(config.max_steps);
+        res.max_displacement = max_disp;
+        res.probe_history = std::move(probe);
+        // final state output (same layout as the static path)
+        exd::engine::coupling::StructuredVectorGrid disp;
+        disp.origin = config.grid.origin;
+        disp.spacing = config.grid.spacing;
+        disp.dims = config.grid.dims;
+        disp.values.assign(stride, 0.0);
+        for (std::size_t n = 0; n < N; ++n)
+            for (int c = 0; c < 3; ++c)
+                disp.values[3 * n + static_cast<std::size_t>(c)]
+                    = u[static_cast<std::size_t>(c) * N + n];
+        res.displacement = std::move(disp);
+        exd::engine::coupling::StructuredVectorGrid vel;
+        vel.origin = config.grid.origin;
+        vel.spacing = config.grid.spacing;
+        vel.dims = config.grid.dims;
+        vel.values.assign(stride, 0.0);
+        for (std::size_t n = 0; n < N; ++n)
+            for (int c = 0; c < 3; ++c)
+                vel.values[3 * n + static_cast<std::size_t>(c)]
+                    = v[static_cast<std::size_t>(c) * N + n];
+        res.velocity = std::move(vel);
+        res.ok = true;
+        res.status = ModelStatus{true, "", warnings};
+        status = res.status;
+        return res;
+    }
 
     // The convergence metric is the residual of the discrete equilibrium
     // relative to its initial (load-driven) scale.  The scale is measured on

@@ -22,6 +22,7 @@
 #include <exd/engine/core/field.hpp>
 #include <exd/engine/core/operator.hpp>
 #include <exd/engine/mesh/structured.hpp>
+#include <exd/engine/numerics/linear_operator.hpp>
 
 #include <array>
 #include <cmath>
@@ -397,6 +398,61 @@ public:
 private:
     mesh::StructuredGrid grid_;
     GhostSpec ghosts_;
+    core::OperatorInfo info_;
+};
+
+/// A = I + alpha·(−Δ): the implicit diffusion step operator (SPD).
+/// Solves (I − dt·D·Δ)c^{n+1} = c^n with alpha = dt·D via CG (spec §35:
+/// reusable matrix-free operators; used by species transport, porous media).
+class DiffusionStepOperator final : public core::IOperator
+{
+public:
+    DiffusionStepOperator(mesh::StructuredGrid grid, GhostSpec ghosts, double alpha)
+        : grid_(std::move(grid)), ghosts_(std::move(ghosts)), alpha_(alpha),
+          laplacian_(grid_, ghosts_), negated_(laplacian_),
+          scratch_(core::FieldMetadata{
+              .name = "diffuse_scratch", .rank = core::FieldRank::Scalar, .components = 1,
+              .location = core::FieldLocation::Node}, grid_.node_count())
+    {
+        info_.name = "implicit_diffusion_step";
+        info_.inputs.push_back(core::FieldMetadata{
+            .name = "u", .rank = core::FieldRank::Scalar, .components = 1,
+            .location = core::FieldLocation::Node});
+        info_.outputs.push_back(info_.inputs.front());
+    }
+    const core::OperatorInfo& info() const override { return info_; }
+    bool apply(const core::Field& in, core::Field& out, core::ModelStatus& status) const override
+    {
+        if (!negated_.apply(in, scratch_, status)) return false;
+        for (size_t i = 0; i < out.size(); ++i)
+            out.data()[i] = in.data()[i] + alpha_ * scratch_.data()[i];
+        return true;
+    }
+    bool apply_transpose(const core::Field& in, core::Field& out,
+                         core::ModelStatus& status) const override
+    {
+        return apply(in, out, status);
+    }
+    bool diagonal(core::Field& out, core::ModelStatus& status) const override
+    {
+        if (!negated_.diagonal(out, status)) return false;
+        for (size_t i = 0; i < out.size(); ++i)
+            out.data()[i] = 1.0 + alpha_ * out.data()[i];
+        return true;
+    }
+    bool jacobian_vector_product(const core::Field& x, const core::Field& v,
+                                 core::Field& out, core::ModelStatus& status) const override
+    {
+        return apply(v, out, status);   // linear operator
+    }
+
+private:
+    mesh::StructuredGrid grid_;
+    GhostSpec ghosts_;
+    double alpha_;
+    FdmLaplacianOperator laplacian_;
+    exd::engine::numerics::NegatedOperator negated_;
+    mutable core::Field scratch_;
     core::OperatorInfo info_;
 };
 

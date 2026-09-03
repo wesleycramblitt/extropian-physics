@@ -218,4 +218,9 @@ consumers are in-repo and are updated).
 | M9 | Presets: turbine/engine demotion, incompressible CFD, CHT | ✅ done |
 | M10 | Docs/README/agent_guide/capability matrix update | ✅ done |
 | M11 | Final: clean configure, full build, 100 tests green, conformance walkthrough | ✅ done |
+| W14a | FDM domain breadth: species transport (advection-diffusion-reaction, operator-composed on the core runtime) + analytic tests | ✅ done |
+| W14b | FDM domain breadth: transient structural / elastic waves (velocity-Verlet, mirror ghosts, P-wave + energy anchors) | ✅ done |
+| W14c | FDM domain breadth: porous media / Darcy pressure diffusion (direct steady solve via the affine-operator linear part + CG) | ✅ done |
+| W14d | Multiphysics presets: aeroacoustics (fdm3→acoustics), thermal-stress (thermal→structural), Joule heating (EM→thermal q-channel), species-in-flow (fdm3→species) — all analytic/consistency verified | ✅ done |
+| W14e | Docs/README/capability matrix updated for W14; 104 tests green | ✅ done |
 

@@ -107,3 +107,11 @@ add_physics_test(fidelity_test unit/fidelity/fidelity_test.cpp)
 # ── Presets (Phase 10) ──
 add_physics_test(cht_preset_test unit/presets/cht_preset_test.cpp)
 add_physics_test(cfd_preset_test unit/presets/cfd_preset_test.cpp)
+add_physics_test(multiphysics_presets_test unit/presets/multiphysics_presets_test.cpp)
+
+# ── Species transport (W14: FDM domain breadth) ──
+add_physics_test(species_test unit/physics/species/species_test.cpp)
+add_physics_test(porous_test unit/physics/porous/porous_test.cpp)
+
+# ── Transient structural / elastic waves (W14) ──
+add_physics_test(elastic_wave_test unit/physics/structural/elastic_wave_test.cpp)
