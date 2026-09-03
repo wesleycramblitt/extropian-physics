@@ -251,6 +251,8 @@ bool FDM3Solver::step(double dt, ModelStatus& status) {
     return true;
 }
 
+FDM3FieldData& FDM3Solver::field() { return field_; }
+
 bool FDM3Solver::set_body_force(std::span<const double> fx, std::span<const double> fy,
                                 std::span<const double> fz, ModelStatus& status) {
     status.ok = true;

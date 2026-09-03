@@ -116,6 +116,7 @@ add_physics_test(species_test unit/physics/species/species_test.cpp)
 add_physics_test(porous_test unit/physics/porous/porous_test.cpp)
 add_physics_test(manipulator_test unit/physics/robotics/manipulator_test.cpp)
 add_physics_test(heterogeneous_test unit/physics/thermal/heterogeneous_test.cpp)
+add_physics_test(fdm3_sources_test unit/physics/fluid/fdm3/fdm3_sources_test.cpp)
 
 # ── Transient structural / elastic waves (W14) ──
 add_physics_test(elastic_wave_test unit/physics/structural/elastic_wave_test.cpp)

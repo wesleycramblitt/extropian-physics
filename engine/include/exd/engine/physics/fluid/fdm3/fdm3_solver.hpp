@@ -46,6 +46,10 @@ public:
     /// The configuration this solver was initialized with.
     const FDM3Config& config() const { return config_; }
 
+    /// Mutable field state for per-step external manipulation (immersed
+    /// solids, actuator disks, HITL edits): apply the change, then `step`.
+    FDM3FieldData& field();
+
     /// Current field state (cell-centered values, updated each step).
     const FDM3FieldData& field() const { return field_; }
 

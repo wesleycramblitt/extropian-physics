@@ -80,6 +80,7 @@ sim.run(st);                     // converges to the 400→350→300 joined prof
 | FSI-lite (W12) | `coupling::simulate_drag_body` | terminal v_t ±10%, drag→mg ±5% |
 | Matrix-free Poisson | `numerics::solve_cg/gmres/bicgstab` on `discretization::fdm::FdmLaplacianOperator` | analytic sin³ verification |
 | Species transport | `physics::species::solve_species` (advection–diffusion–reaction, operator-composed) | exact decay, A→B conservation, advective-decay profile, variance 2Dt |
+| Immersed solids + buoyancy | `physics::fluid::fdm3` sources (smooth solid fraction, penalty AND kinematic freeze; Boussinesq T→force) | frozen cells, flow diversion + mass conservation, moving solid dragged to u_solid, convection circulation |
 | Elastic waves | `physics::structural::solve_elasticity` (transient) | P-wave arrival within 2%, flight energy conserved |
 | Porous media | `physics::porous::solve_porous` (Darcy, implicit CG + direct steady) | exact linear steady, variance 2Kt, linear mass growth |
 | Aeroacoustics | `presets::multiphysics::run_aeroacoustics` (fdm3 → acoustics mean flow) | pulse arrives on schedule, mean flow injected |

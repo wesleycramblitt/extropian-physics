@@ -47,6 +47,7 @@ add_library(exd-physics STATIC
     src/physics/fluid/fdm/fdm_pressure.cpp
     src/physics/fluid/fdm/fdm_solver.cpp
     src/physics/fluid/fdm/fdm_spatial.cpp
+    src/physics/fluid/fdm3/fdm3_sources.cpp
     src/physics/fluid/forces/blade_element.cpp
     src/physics/fluid/forces/blade_surface.cpp
     src/physics/fluid/forces/force_evaluator.cpp

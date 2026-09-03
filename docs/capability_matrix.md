@@ -25,6 +25,14 @@ entry points below (pattern + recipes: `docs/real_run_guide.md`).
 | Serial manipulator (CLASS) | `physics::robotics::step_manipulator` (N links) + `presets::robotics::run_manipulator_trajectory` | any serial arm from the user's link/joint/gain data: mass coupling, Coriolis, torque limits, soft stops, PD anti-windup; energy conserved, tracking < 1e-3 rad, stops bound |
 | Heat conduction (CLASS) | `physics::thermal::solve_heterogeneous_conduction` + `presets::thermal::run_steady_conduction` | per-node k/q fields (the CAD/import contract) or box regions, per-face FixedValue/Insulated BCs; eliminated-Dirichlet + symmetric half-row operator, CG; source == sink flux exactly, linearity, spreader cooling, exact 1D bridge. Chiplets/heat sinks/reactor walls are fixtures, not presets |
 
+## 0c. W16: fdm3 immersed solids + Boussinesq buoyancy
+
+| System | Run entry | Fidelity/anchors |
+|---|---|---|
+| Movable solids in flow ("veins", pistons, impellers) | `fdm3::add_immersed_solid_forces` (soft penalty) or `fdm3::apply_kinematic_freeze` (hard, recommended) with per-step geometry updates | frozen cells |u| < 0.02; flow diverts (umax > 1.5× inlet) with global mass balance < 3%; moving solid drags the occupied cells to u_solid |
+| Natural convection | `fdm3::add_boussinesq_forces` (T field from the thermal channel) | exact per-cell buoyancy; closed-box circulation (hot bottom rises, upper returns) |
+| Caveats (documented) | fdm3 Heun is unstable with sustained body forces (use ForwardEuler/RK4); the collocated projection cancels uniform interior body forces in the developed state (freeze for hard blockage) | — |
+
 ---
 ## 1. Wind turbine / water turbine — real multiphysics over a mesh
 
