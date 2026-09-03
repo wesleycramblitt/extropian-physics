@@ -130,6 +130,59 @@ private:
     double scale_;
 };
 
+/// Linear part L(x) = A(x) − A(0) of an AFFINE operator A (the
+/// eliminated-Dirichlet operators are affine in their fixed face values:
+/// A(x) = M·x + c).  Iterative solvers require the linear part; the affine
+/// constant is evaluated once at construction (A·0) and subtracted on every
+/// apply.  Used by the porous-media and chiplet-board steady solves.
+class AffineLinearPart final : public core::IOperator
+{
+public:
+    AffineLinearPart(const core::IOperator& inner, size_t n)
+        : inner_(inner),
+          zero_(core::FieldMetadata{
+              .name = "zero", .rank = core::FieldRank::Scalar, .components = 1,
+              .location = core::FieldLocation::Node}, n),
+          fixed_(core::FieldMetadata{
+              .name = "affine_const", .rank = core::FieldRank::Scalar, .components = 1,
+              .location = core::FieldLocation::Node}, n)
+    {
+        zero_.assign(0.0);
+        inner_.apply(zero_, fixed_, fixed_status_);   // fixed_ = A(0)
+    }
+    const core::OperatorInfo& info() const override { return inner_.info(); }
+    bool apply(const core::Field& in, core::Field& out, core::ModelStatus& status) const override
+    {
+        if (!inner_.apply(in, out, status)) return false;
+        for (size_t i = 0; i < out.size(); ++i)
+            out.data()[i] -= fixed_.data()[i];   // L(x) = A(x) − A(0)
+        return true;
+    }
+    bool apply_transpose(const core::Field& in, core::Field& out,
+                         core::ModelStatus& status) const override
+    {
+        if (!inner_.apply_transpose(in, out, status)) return false;
+        for (size_t i = 0; i < out.size(); ++i)
+            out.data()[i] -= fixed_.data()[i];
+        return true;
+    }
+    bool diagonal(core::Field& out, core::ModelStatus& status) const override
+    {
+        return inner_.diagonal(out, status);   // the constant adds no diagonal
+    }
+    bool jacobian_vector_product(const core::Field& x, const core::Field& v,
+                                 core::Field& out, core::ModelStatus& status) const override
+    {
+        return apply(v, out, status);   // linear part: J(x)·v = L(v)
+    }
+
+private:
+    const core::IOperator& inner_;
+    core::Field zero_;
+    core::Field fixed_;
+    core::ModelStatus fixed_status_;
+};
+
 /// Absolute + relative residual criterion for iterative solvers.
 struct IterativeSolverConfig
 {

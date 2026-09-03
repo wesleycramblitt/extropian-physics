@@ -223,4 +223,8 @@ consumers are in-repo and are updated).
 | W14c | FDM domain breadth: porous media / Darcy pressure diffusion (direct steady solve via the affine-operator linear part + CG) | ✅ done |
 | W14d | Multiphysics presets: aeroacoustics (fdm3→acoustics), thermal-stress (thermal→structural), Joule heating (EM→thermal q-channel), species-in-flow (fdm3→species) — all analytic/consistency verified | ✅ done |
 | W14e | Docs/README/capability matrix updated for W14; 104 tests green | ✅ done |
+| W15a | Static-fields: Neumann (zero-gradient) face conditions — the parallel-plate capacitor has the EXACT discrete linear bridge (the grounded-box sag was real physics, now understood and tested); joule anchors tightened to 1-2% | ✅ done |
+| W15b | Robotics: 2R articulated arm (minimal coordinates, revolute joints, torque limits, joint stops, PD anti-windup) + arm-trajectory preset — energy, tracking, stop, gravity-compensation anchors | ✅ done |
+| W15c | Chiplet boards: heterogeneous-conduction board preset (per-node k, harmonic-mean face fluxes, chip sources, spreaders, sink faces) on the shared affine-operator + CG path; energy balance + linearity + spreader anchors | ✅ done |
+| W15d | Docs/README/capability matrix updated; 107 tests green | ✅ done |
 

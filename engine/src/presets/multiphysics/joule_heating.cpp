@@ -14,26 +14,16 @@ JouleHeatingResult run_joule_heating(const JouleHeatingConfig& config)
     ecfg.mode = exd::engine::physics::electromagnetics::StaticFieldMode::Electrostatic;
     ecfg.dims = {config.nx, config.ny, config.nz};
     ecfg.spacing = {config.spacing, config.spacing, config.spacing};
-    ecfg.face_values = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    // full-cross-section plate electrodes near the x ends
-    const double half_y = (config.ny - 1) * config.spacing / 2.0;
-    const double half_z = (config.nz - 1) * config.spacing / 2.0;
-    // plates CLOSE TOGETHER in the middle (the module's verified regime —
-    // the capacitor test pins plates at ±0.1 and verifies the gap field to
-    // ~10%): pins at x = ±0.1 (4 cells), 3 columns each; the uniform gap
-    // spans d = 0.125 m between the inner pin columns.
-    const double pin_x = 4.0 * config.spacing;
-    const double gap_d = 2.0 * (pin_x - 1.5 * config.spacing);
-    const double plate_x_half = 1.5 * config.spacing;
-    exd::engine::physics::electromagnetics::StaticFieldConfig::BoxPatch cathode;
-    cathode.center = {-pin_x, 0.0, 0.0};
-    cathode.half_extents = {plate_x_half, half_y, half_z};
-    cathode.value = 0.0;
-    exd::engine::physics::electromagnetics::StaticFieldConfig::BoxPatch anode;
-    anode.center = {+pin_x, 0.0, 0.0};
-    anode.half_extents = {plate_x_half, half_y, half_z};
-    anode.value = config.voltage;
-    ecfg.patches = {cathode, anode};
+    // Parallel-plate capacitor: the plates ARE the x faces; the side walls
+    // are NEUMANN (zero normal gradient), so the field is the EXACT linear
+    // bridge with E = −V/L uniform — the discrete solution the module's
+    // Neumann-face support guarantees (see static_fields_test).
+    ecfg.face_values = {0.0, config.voltage, 0.0, 0.0, 0.0, 0.0};
+    for (int a = 0; a < 6; ++a)
+        ecfg.face_kind[static_cast<size_t>(a)] = (a < 2)
+            ? exd::engine::physics::electromagnetics::FaceKind::Dirichlet
+            : exd::engine::physics::electromagnetics::FaceKind::Neumann;
+    const double gap_d = (config.nx - 1) * config.spacing;   // full x extent
     ecfg.sor_omega = 1.8;
     ecfg.tolerance = 1e-10;
     ecfg.max_iterations = 200000;

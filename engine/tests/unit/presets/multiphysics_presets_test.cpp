@@ -87,7 +87,7 @@ TEST_CASE("Thermal-stress preset: free bar expands u(L) = α·g·L²/2")
     CHECK(r.measured_tip_displacement == doctest::Approx(exact).epsilon(0.02));
 }
 
-TEST_CASE("Joule-heating preset: P ≈ V²σA/L and parabolic mid temperature")
+TEST_CASE("Joule-heating preset: exact parallel-plate P and uniform-q parabola")
 {
     JouleHeatingConfig cfg;
     cfg.nx = 41; cfg.ny = 9; cfg.nz = 9;
@@ -97,19 +97,22 @@ TEST_CASE("Joule-heating preset: P ≈ V²σA/L and parabolic mid temperature")
 
     const auto r = run_joule_heating(cfg);
     REQUIRE(r.ok);
-    // parallel-plate anchor: P = V²σA/L (the electrostatic field is
-    // engineering-grade — the module's own capacitor test tolerates ~10%
-    // locally; the discrete gradient amplifies near the plates)
-    // the electrostatic field is engineering-grade (the module's own
-    // capacitor test tolerates ~10% locally, and the discrete gradient
-    // spikes near the pinned columns): bound the integrated power by an
-    // order of magnitude around the parallel-plate value
-    CHECK(r.total_power > 0.1 * r.analytic_power);
-    CHECK(r.total_power < 10.0 * r.analytic_power);
-    // thermal: STEADY ENERGY BALANCE — the converged solution satisfies
-    // ∫q dV = k·A·(∂T/∂n at the x ends) exactly at the discrete level
-    // (this is the discrete conservation the SOR fixed point obeys)
+    // With the NEUMANN side walls the static field is the exact discrete
+    // linear bridge: E = −V/L uniform, q = σ·(V/L)² uniform, and
+    // P = σ·V²·A/L holds to the solver tolerance (W15 fix).
+    const double l_gap = cfg.spacing * (cfg.nx - 1);
+    CHECK(r.total_power == doctest::Approx(r.analytic_power).epsilon(0.02));
+    CHECK(r.center_source == doctest::Approx(
+        cfg.conductivity * cfg.voltage * cfg.voltage / (l_gap * l_gap)).epsilon(0.02));
+
+    // thermal: uniform-q parabola T_mid = T0 + q·L²/(8k) exactly
     const double k = cfg.thermal_conductivity;
+    const double t_mid_exact = cfg.t_wall + r.center_source * l_gap * l_gap /
+                               (8.0 * k);
+    CHECK(r.mid_temperature == doctest::Approx(t_mid_exact).epsilon(0.01));
+    CHECK(r.mid_temperature > cfg.t_wall);
+
+    // steady energy balance: ∫q dV = k·A·(∂T/∂n at the x ends)
     const double area = cfg.spacing * (cfg.ny - 1) * cfg.spacing * (cfg.nz - 1);
     const size_t nxh = static_cast<size_t>(cfg.nx);
     const size_t nyh = static_cast<size_t>(cfg.ny);
@@ -118,15 +121,11 @@ TEST_CASE("Joule-heating preset: P ≈ V²σA/L and parabolic mid temperature")
         return r.thermal.temperature.values[i + nxh * (mid_j + nyh * mid_k)];
     };
     const double h = cfg.spacing;
-    const double slope_minus = (tline(1) - tline(0)) / h;                       // +x end
-    const double slope_plus = (tline(nxh - 1) - tline(nxh - 2)) / h;            // −x end
+    const double slope_minus = (tline(1) - tline(0)) / h;
+    const double slope_plus = (tline(nxh - 1) - tline(nxh - 2)) / h;
     const double flux_out = k * area * (std::fabs(slope_minus) + std::fabs(slope_plus));
-    // the thermal module's own source integral
     CHECK(r.thermal.total_power == doctest::Approx(r.total_power).epsilon(0.01));
-    CHECK(flux_out == doctest::Approx(r.total_power).epsilon(0.05));
-    CHECK(r.mid_temperature > cfg.t_wall);   // heating actually happened
-    CHECK(r.center_source > 0.0);
-    CHECK(r.total_power > 0.0);
+    CHECK(flux_out == doctest::Approx(r.total_power).epsilon(0.02));
 }
 
 TEST_CASE("Species-in-flow preset: outlet follows exp(−k·L/u)")

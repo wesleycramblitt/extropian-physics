@@ -130,12 +130,13 @@ StaticFieldResult solve_static_field(const StaticFieldConfig& config)
             for (int i = 0; i < nx; ++i)
             {
                 const std::size_t id = grid_index(i, j, k, nx, ny);
-                if (i == 0) { phi[id] = config.face_values[0]; dirichlet[id] = true; }
-                if (i == nx - 1) { phi[id] = config.face_values[1]; dirichlet[id] = true; }
-                if (j == 0) { phi[id] = config.face_values[2]; dirichlet[id] = true; }
-                if (j == ny - 1) { phi[id] = config.face_values[3]; dirichlet[id] = true; }
-                if (k == 0) { phi[id] = config.face_values[4]; dirichlet[id] = true; }
-                if (k == nz - 1) { phi[id] = config.face_values[5]; dirichlet[id] = true; }
+                const auto D = FaceKind::Dirichlet;
+                if (i == 0 && config.face_kind[0] == D) { phi[id] = config.face_values[0]; dirichlet[id] = true; }
+                if (i == nx - 1 && config.face_kind[1] == D) { phi[id] = config.face_values[1]; dirichlet[id] = true; }
+                if (j == 0 && config.face_kind[2] == D) { phi[id] = config.face_values[2]; dirichlet[id] = true; }
+                if (j == ny - 1 && config.face_kind[3] == D) { phi[id] = config.face_values[3]; dirichlet[id] = true; }
+                if (k == 0 && config.face_kind[4] == D) { phi[id] = config.face_values[4]; dirichlet[id] = true; }
+                if (k == nz - 1 && config.face_kind[5] == D) { phi[id] = config.face_values[5]; dirichlet[id] = true; }
             }
 
     // ── Dirichlet patches (electrodes / conductors) ───────────────
@@ -210,25 +211,53 @@ StaticFieldResult solve_static_field(const StaticFieldConfig& config)
     const std::size_t nxs = static_cast<std::size_t>(nx);
     const std::size_t nxy = nxs * static_cast<std::size_t>(ny);
 
+    // Neighbor offsets with MIRROR ghosts at the boundary: a boundary node
+    // whose face is Neumann is relaxed with the out-of-plane neighbor
+    // replaced by its mirror image (zero normal gradient).  Dirichlet
+    // boundary nodes are skipped, so the mirror never reads an out-of-range
+    // node for them.
+    const auto D = FaceKind::Dirichlet;
+    auto xm = [&](int i, std::size_t base) {
+        return (i > 0) ? (base - 1) : (base + 1);
+    };
+    auto xp = [&](int i, std::size_t base) {
+        return (i < nx - 1) ? (base + 1) : (base - 1);
+    };
+    auto ym = [&](int j, std::size_t base) {
+        return (j > 0) ? (base - nxs) : (base + nxs);
+    };
+    auto yp = [&](int j, std::size_t base) {
+        return (j < ny - 1) ? (base + nxs) : (base - nxs);
+    };
+    auto zm = [&](int k, std::size_t base) {
+        return (k > 0) ? (base - nxy) : (base + nxy);
+    };
+    auto zp = [&](int k, std::size_t base) {
+        return (k < nz - 1) ? (base + nxy) : (base - nxy);
+    };
+    (void)D;
+
     int iterations = 0;
     double residual = 0.0;
     for (; iterations < config.max_iterations; ++iterations)
     {
         double sweep_max = 0.0;
-        for (int k = 1; k < nz - 1; ++k)
-            for (int j = 1; j < ny - 1; ++j)
-                for (int i = 1; i < nx - 1; ++i)
+        for (int k = 0; k < nz; ++k)
+            for (int j = 0; j < ny; ++j)
+                for (int i = 0; i < nx; ++i)
                 {
                     const std::size_t id = grid_index(i, j, k, nx, ny);
                     if (dirichlet[id])
                         continue;
-
-                    const std::size_t ixm = id - 1;
-                    const std::size_t ixp = id + 1;
-                    const std::size_t jym = id - static_cast<std::size_t>(nx);
-                    const std::size_t jyp = id + static_cast<std::size_t>(nx);
-                    const std::size_t kzm = id - nxy;   // nxy = nx·ny
-                    const std::size_t kzp = id + nxy;
+                    // Neumann boundary nodes: the mirror ghost substitutes
+                    // the out-of-range neighbor (only valid when the local
+                    // face is Neumann; Dirichlet boundary nodes were skipped).
+                    const std::size_t ixm = xm(i, id);
+                    const std::size_t ixp = xp(i, id);
+                    const std::size_t jym = ym(j, id);
+                    const std::size_t jyp = yp(j, id);
+                    const std::size_t kzm = zm(k, id);
+                    const std::size_t kzp = zp(k, id);
 
                     const double phi_new = ((phi[ixm] + phi[ixp]) / hx2 +
                                             (phi[jym] + phi[jyp]) / hy2 +

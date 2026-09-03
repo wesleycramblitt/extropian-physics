@@ -24,6 +24,18 @@ enum class StaticFieldMode : uint8_t
     Magnetostatic, //  ∇²A_z = −μ₀·J_z, B = ∇×A  (A = A_z·ẑ)
 };
 
+/// Per-face boundary kind.  Dirichlet = fixed value (current default).
+/// Neumann = zero normal gradient (mirror ghost): the face nodes participate
+/// in the relaxation and the ghost reads mirror the interior neighbor.  A
+/// parallel-plate capacitor with Neumann side walls has the EXACT linear
+/// discrete bridge (the grounded-box sag is real physics, not a solver
+/// defect — the grounded side walls break the x-antisymmetry).
+enum class FaceKind : uint8_t
+{
+    Dirichlet,
+    Neumann,
+};
+
 struct StaticFieldConfig
 {
     StaticFieldMode mode = StaticFieldMode::Electrostatic;
@@ -33,8 +45,15 @@ struct StaticFieldConfig
     std::array<double, 3> spacing = {0.01, 0.01, 0.01}; // node spacing (m)
 
     // Dirichlet values on the faces in order {x−, x+, y−, y+, z−, z+}
-    // (φ in V for electrostatic; A_z in T·m for magnetostatic)
+    // (φ in V for electrostatic; A_z in T·m for magnetostatic).  A face whose
+    // kind is Neumann ignores its face_value.
     std::array<double, 6> face_values = {0, 0, 0, 0, 0, 0};
+    // Per-face boundary kind in the same order; default = all Dirichlet
+    // (backward compatible).
+    std::array<FaceKind, 6> face_kind = {
+        FaceKind::Dirichlet, FaceKind::Dirichlet, FaceKind::Dirichlet,
+        FaceKind::Dirichlet, FaceKind::Dirichlet, FaceKind::Dirichlet,
+    };
 
     // Internal Dirichlet patches (electrodes / conductors)
     struct BoxPatch

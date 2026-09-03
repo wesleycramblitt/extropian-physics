@@ -17,6 +17,14 @@ entry points below (pattern + recipes: `docs/real_run_guide.md`).
 | Joule heating | `presets::multiphysics::run_joule_heating` | static-field E → thermal source channel; steady power-balance (source = outflux) |
 | Species in flow | `presets::multiphysics::run_species_in_flow` | fdm3 channel → species advection-decay; outlet c matches exp(−k·L/u) within 5% |
 
+## 0b. W15: static-fields Neumann faces, robotics, chiplet boards
+
+| System | Run entry | Fidelity/anchors |
+|---|---|---|
+| Electrostatics (fixed) | `physics::electromagnetics::solve_static_field` + `FaceKind::Neumann` | the parallel-plate capacitor with Neumann side walls reproduces the EXACT discrete linear bridge (1e-7) and E = −V/L; the grounded-box sag (real physics) documented |
+| Robotic arm | `physics::robotics` (2R arm) + `presets::robotics::run_arm_trajectory` | minimal-coordinate revolute joints, mass coupling, Coriolis, torque limits, soft joint stops, PD anti-windup; energy conserved in free spin, setpoint tracking < 1e-3 rad, stops bound the excursion |
+| Chiplet board | `presets::electronics::solve_chiplet_board` | heterogeneous-k steady conduction (per-node k, harmonic-mean face flux, chip sources, copper spreaders, sink faces); chip power == sink flux (discrete energy balance), peak ∝ power, spreader lowers the peak |
+
 ---
 ## 1. Wind turbine / water turbine — real multiphysics over a mesh
 

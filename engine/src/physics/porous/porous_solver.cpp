@@ -14,59 +14,13 @@ using namespace exd::engine::core;
 using exd::engine::discretization::fdm::DiffusionStepOperator;
 using exd::engine::discretization::fdm::FdmLaplacianOperator;
 using exd::engine::discretization::fdm::GhostSpec;
+using exd::engine::numerics::AffineLinearPart;
 using exd::engine::numerics::IterativeSolverConfig;
 using exd::engine::numerics::NegatedOperator;
 using exd::engine::numerics::ScaledOperator;
 using exd::engine::numerics::solve_cg;
 
 namespace {
-
-/// Linear part L(x) = A(x) − A(0) of an AFFINE operator A (the
-/// eliminated-Dirichlet operators are affine in the fixed face values:
-/// A(x) = M·x + c).  Iterative solvers require the linear part.
-class AffineToLinear final : public IOperator
-{
-public:
-    AffineToLinear(const IOperator& inner, size_t n)
-        : inner_(inner), fixed_(FieldMetadata{
-              .name = "affine_const", .rank = FieldRank::Scalar, .components = 1,
-              .location = FieldLocation::Node}, n)
-    {
-        zero_ = fixed_;
-        zero_.assign(0.0);
-        inner_.apply(zero_, fixed_, fixed_status_);   // fixed_ = A(0)
-    }
-    const OperatorInfo& info() const override { return inner_.info(); }
-    bool apply(const Field& in, Field& out, ModelStatus& status) const override
-    {
-        if (!inner_.apply(in, out, status)) return false;
-        for (size_t i = 0; i < out.size(); ++i)
-            out.data()[i] -= fixed_.data()[i];   // L(x) = A(x) − A(0)
-        return true;
-    }
-    bool apply_transpose(const Field& in, Field& out, ModelStatus& status) const override
-    {
-        if (status.ok /* inner transpose unsupported */) {}
-        status.ok = false;
-        status.error = "affine-to-linear: transpose not supported";
-        return false;
-    }
-    bool diagonal(Field& out, ModelStatus& status) const override
-    {
-        return inner_.diagonal(out, status);   // A(0) contributes no diagonal
-    }
-    bool jacobian_vector_product(const Field& x, const Field& v,
-                                 Field& out, ModelStatus& status) const override
-    {
-        return apply(v, out, status);   // linear part: J(x)·v = L(v)
-    }
-
-private:
-    const IOperator& inner_;
-    mutable Field zero_;
-    Field fixed_;
-    ModelStatus fixed_status_;
-};
 
 GhostSpec make_ghosts(const PorousConfig& config)
 {
@@ -196,7 +150,7 @@ PorousResult solve_porous(const PorousConfig& config)
         // The steady state satisfies A(p0 + w) = 0 → M·w = −A(p0), where
         // p0 carries the face values.  Solve the LINEAR part L = A − A(0)
         // with b = −A(p0) (evaluated with the affine operator).
-        AffineToLinear L(A, N);
+        AffineLinearPart L(A, N);
         mesh::StructuredScalarGrid p0;
         static_cast<mesh::StructuredGrid&>(p0) = config.grid;
         p0.values.assign(N, 0.0);

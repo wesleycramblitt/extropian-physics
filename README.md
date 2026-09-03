@@ -86,6 +86,9 @@ sim.run(st);                     // converges to the 400→350→300 joined prof
 | Thermal stress | `presets::multiphysics::run_thermal_stress` | free-bar expansion u(L) = α·g·L²/2 |
 | Joule heating | `presets::multiphysics::run_joule_heating` (EM → thermal q-channel) | source/outflux energy balance, heating confirmed |
 | Species in flow | `presets::multiphysics::run_species_in_flow` | outlet c = c_in·exp(−k·L/u) within 5% |
+| Robotic arm | `physics::robotics` (2R, revolute joints, torque limits, stops, PD) + `presets::robotics::run_arm_trajectory` | energy conserved, PD tracking < 1e-3 rad, stops bound motion |
+| Chiplet board | `presets::electronics::solve_chiplet_board` (heterogeneous-k conduction, chips, spreaders) | chip power = sink flux, peak scales with power, spreader cools |
+| Electrostatics | `physics::electromagnetics` Neumann faces | exact linear discrete bridge (1e-7) |
 | Fidelity profiles | `fidelity::profile(FidelityLevel::…)` | REALTIME→HIGH_FIDELITY defaults |
 
 ## Building
@@ -105,7 +108,7 @@ cmake -S . -B build -DEXT_PHYSICS_BUILD_TESTS=ON \
 ```
 
 Requires: CMake 3.21+, C++23, `extropian-core`, `extropian-geometry`.
-104 unit tests (doctest) — the full suite runs in ~40 s.
+107 unit tests (doctest) — the full suite runs in ~60 s.
 
 ## Docs
 

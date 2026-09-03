@@ -94,6 +94,49 @@ TEST_CASE("parallel-plate capacitor gives uniform E and linear potential")
     CHECK(phi_value == doctest::Approx(75.0).epsilon(0.05));
 }
 
+// ── Neumann-side capacitor: the exact discrete bridge ─────────────
+// A parallel-plate capacitor in a FULLY grounded box sags (the grounded side
+// walls break the x-antisymmetry — real physics, see the joule-heating W14
+// investigation).  With Neumann (zero normal gradient) side walls the plates
+// at the x faces produce the EXACT discrete linear bridge φ = V·i/(nx−1) at
+// every node and E = (−V/L, 0, 0) exactly.
+
+TEST_CASE("parallel-plate capacitor with Neumann side walls: exact linear bridge")
+{
+    StaticFieldConfig cfg;
+    cfg.mode = StaticFieldMode::Electrostatic;
+    cfg.dims = {21, 9, 9};
+    cfg.spacing = {0.05, 0.05, 0.05};
+    cfg.face_values = {0, 10, 0, 0, 0, 0};
+    for (int a = 0; a < 6; ++a)
+        cfg.face_kind[static_cast<size_t>(a)] =
+            (a < 2) ? FaceKind::Dirichlet : FaceKind::Neumann;
+
+    auto result = solve_static_field(cfg);
+    REQUIRE(result.ok);
+    REQUIRE(result.warnings.empty());
+
+    const auto& p = result.potential;
+    auto idx = [&](int i, int j, int k) {
+        return static_cast<size_t>(i) + static_cast<size_t>(p.dims[0]) *
+                   (static_cast<size_t>(j) + static_cast<size_t>(p.dims[1]) * k);
+    };
+    double maxerr = 0.0;
+    for (int k = 0; k < p.dims[2]; ++k)
+        for (int j = 0; j < p.dims[1]; ++j)
+            for (int i = 0; i < p.dims[0]; ++i)
+                maxerr = std::max(maxerr, std::fabs(p.values[idx(i, j, k)] - 0.5 * i));
+    CHECK(maxerr < 1e-6);   // exact linear bridge to the SOR tolerance
+
+    auto E = make_vector_grid_field(result.field_vector);
+    REQUIRE(E != nullptr);
+    std::array<double, 3> e{0.0, 0.0, 0.0};
+    REQUIRE(E->sample({0.0, 0.0, 0.0}, e));
+    CHECK(e[0] == doctest::Approx(-10.0).epsilon(1e-6));
+    CHECK(std::fabs(e[1]) < 1e-6);
+    CHECK(std::fabs(e[2]) < 1e-6);
+}
+
 // ── Magnetostatic wire ────────────────────────────────────────────
 
 TEST_CASE("infinite wire field matches Ampere's law B = mu0 I / (2 pi r)")
