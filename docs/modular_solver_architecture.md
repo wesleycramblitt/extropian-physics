@@ -1,5 +1,14 @@
 # Modular Solver System — Architecture & Implementation Plan
 
+> **HISTORICAL RECORD (2026-09-03).** The authoritative roadmap is now
+> [`docs/implementation_spec.md`](implementation_spec.md) v0.3; this repo
+> conforms to it (see [`docs/implementation_spec_conformance.md`](implementation_spec_conformance.md)).
+> Phases A–J and waves W0–W12 below remain the accurate history of how the
+> modules were built; the spec's phases 1–13 supersede this plan. Key
+> deltas: namespace root is now `exd::engine` (was `exd::physics`), the
+> `engine/` tree matches spec §57, and the turbine/engine applications are
+> presets (`exd::engine::presets::turbine|engine`) rather than app modules.
+
 Authoritative roadmap for turning extropian-physics into a modular, multi-domain,
 multi-discretization solver system. Companion to `agent_guide.md` (conventions)
 and `bem_level3_architecture.md` (reference implementation pattern).

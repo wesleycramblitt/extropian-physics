@@ -17,7 +17,7 @@ entry points below (pattern + recipes: `docs/real_run_guide.md`).
 | Output | velocity+pressure field stamps (`.fld` + timeline), rotor state CSV | real (streamed per step) |
 
 **Wind** — any `V_inf`, `rho = 1.225`, `mu = 1.81e-5` via
-`turbine::default_grid_config` + `run_coupled_turbine`.
+`presets::turbine::default_grid_config` + `run_coupled_turbine`.
 
 **Water** — same code path, working fluid only: `rho = 1025`, `mu = 1.08e-3`
 (seawater); scale the generator torque curve and rotor inertia by
@@ -47,7 +47,7 @@ project, not required for the capability.
 
 | Piece | What runs | Status |
 |---|---|---|
-| Steam EOS | `thermo::steam`: Clausius–Clapeyron saturation line (p_sat(T)/T_sat(p)), liquid/vapor/latent enthalpies, saturated vapor density — engineering model, ~5–10% vs IAPWS across 0–200 °C | real |
+| Steam EOS | `physics::thermo::steam`: Clausius–Clapeyron saturation line (p_sat(T)/T_sat(p)), liquid/vapor/latent enthalpies, saturated vapor density — engineering model, ~5–10% vs IAPWS across 0–200 °C | real |
 | Cycle | single-acting: saturated admission to cutoff, wet-steam polytrope expansion (x = x_cut·(V_cut/V)^(n−1), n=1.13), exhaust to condenser; cylinder temperature on the saturation line while wet | real |
 | Energy | per-cycle boiler heat m·(h_g − h_f) (Rankine-lite bookkeeping); `efficiency_estimate = W/heat` | real |
 | Output | same per-step CSV as the combustion engine (θ, ω, piston, p/T, torque, power) | real |
@@ -71,7 +71,7 @@ without touching the cycle.
 | Output | per-step CSV (t, ω, p, ṁ, π, torques, gain) | real (one row per step) |
 
 Run: caller program linking `exd-physics`, calling
-`fluid::turbomachinery::simulate_compression_system` (or `solve_stage_stack`
+`physics::fluid::turbomachinery::simulate_compression_system` (or `solve_stage_stack`
 for pure/batchable stack solves — optimizer-ready). Turbocharger
 (compressor+turbine on one shaft) is a verified acceptance test.
 

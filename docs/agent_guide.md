@@ -8,22 +8,28 @@ this codebase. Follow these rules strictly. When in doubt, the code in
 
 ## 1. Project Identity
 
-**extropian-physics** is a C++23 static library providing the physics
-infrastructure layer for the Extropian simulation ecosystem. It owns:
+**extropian-physics** is a C++23 static library implementing the composable
+numerical engine of `docs/implementation_spec.md` v0.3. It owns:
 
-- Mesh representation (nodes, cells, boundary faces)
-- Fields (scalar, vector, tensor) on meshes
-- Boundary condition framework
-- Material database
-- Solver plugin interface (lifecycle, stepping, coupling surfaces)
-- Solver management (registration, creation, lifecycle)
-- Coupling between solvers (surface mapping, data exchange)
-- Domain-specific solvers that implement the plugin interface
+- Core runtime: `State`, `Field` (contiguous arrays + metadata), `EntitySet`,
+  `Unit` dimensional analysis, `Buffer`/`MemorySpace`, operators, execution graph
+- Structured mesh: topology, metrics, generation, validation, boundary conditions
+- Discretizations: FDM operator library (gradient/divergence/curl/Laplacian/
+  advection) + matrix-free operator interface
+- Numerics: ODE integrators, time stepping, CG/GMRES/BiCGSTAB, Newton/fixed-point
+- Physics modules: fluid (fdm, fdm3, forces, BEM, lumped, turbomachinery),
+  thermal, structural, electromagnetics, reaction, particles, rigid_body,
+  thermo, control, acoustics
+- Coupling engine: field channels, samplers, mapping, `CouplingManager`,
+  coupling contracts, compatibility rules, `Simulation` pipeline
+- Fidelity profiles, diagnostics, output channels
+- Presets: turbine, engine, incompressible CFD, conjugate heat transfer —
+  validated assemblies, never duplicate solvers
+- External solver plugins (`ISolverPlugin`) for high-fidelity external
+  solvers living in separate `extropian-solver-*` repos
 
-**Not owned by this repo:** solver implementations. High-fidelity solvers
-(CFD, FEA, etc.) live in separate `extropian-solver-*` repos and implement
-`ISolverPlugin`. The BEM turbine solver is the one exception — it lives here
-because it's a reduced-order model tightly coupled to the physics data model.
+Conformance contract: `docs/implementation_spec_conformance.md` (layout,
+namespace, and spec§→code mapping).
 
 ### External dependencies
 
@@ -41,24 +47,25 @@ because it's a reduced-order model tightly coupled to the physics data model.
 
 ```
 extropian-physics/
-├── include/exd/physics/          PUBLIC API HEADERS — contracts only
-│   ├── physics.hpp               Umbrella header
-│   ├── solver/                   Plugin interface + manager
-│   └── fluid/reduced_order/bem/  BEM public types (config, result, airfoil, solver)
-├── src/                          PRIVATE IMPLEMENTATION
-│   ├── mesh/                     Mesh types + I/O stubs
-│   ├── field/                    Field types + interpolation
-│   ├── bc/                       Boundary condition framework
-│   ├── material/                 Material database
-│   ├── solver/                   Solver manager, time stepping, convergence
-│   ├── coupling/                 Coupling manager + surface mapping
-│   ├── io/                       Output channels (field stamps, CSV series)
-│   ├── fluid/fdm3/               3D FDM solver (the coupled-CFD reference)
-│   ├── engine/                   Slider-crank engines (Otto + steam)
-│   └── fluid/reduced_order/bem/  BEM solver (the reference implementation)
-├── tests/unit/                   doctest-based unit tests
+├── engine/                       the engine (spec §57)
+│   ├── include/exd/engine/       PUBLIC API HEADERS — namespace mirrors path
+│   │   ├── engine.hpp            Umbrella header
+│   │   ├── core/                 State · Field · EntitySet · Units · Memory · Operators · ExecutionGraph
+│   │   ├── mesh/                 structured topology · generation · validation · boundary
+│   │   ├── discretization/fdm/   FDM operators + matrix-free Laplacian operator
+│   │   ├── numerics/             integrators · time_stepping · linear_operator · cg · gmres · bicgstab · nonlinear
+│   │   ├── physics/              fluid · thermal · structural · electromagnetics · reaction ·
+│   │   │                         particles · rigid_body · thermo · control · acoustics
+│   │   ├── coupling/             channels · samplers · coupling_manager · contracts · rules · pipeline · plugins
+│   │   ├── fidelity/             FidelityProfile + builtin profiles
+│   │   ├── presets/              turbine · engine · cfd · multiphysics (validated assemblies)
+│   │   ├── backends/cpu.hpp      CPU execution primitives
+│   │   ├── output/               field stamps · CSV series · output policy
+│   │   └── diagnostics/          CFL · conservation · residual history · stopwatch
+│   ├── src/                      PRIVATE IMPLEMENTATION (mirrors include/exd/engine)
+│   └── tests/unit/               doctest-based unit tests
 ├── docs/                         Architecture docs + this agent guide
-└── data/airfoils/               Synthetic NACA polar CSVs
+└── data/airfoils/                Synthetic NACA polar CSVs
 ```
 
 ### The Public/Private header split
@@ -92,20 +99,28 @@ These are enforced, not suggestions.
 
 ### Namespaces
 
-Deeply nested, matching the directory path:
+Deeply nested, matching the directory path (root `exd::engine` per spec §57):
 
 ```
-exd::physics::mesh
-exd::physics::field
-exd::physics::bc
-exd::physics::material
-exd::physics::solver
-exd::physics::coupling
-exd::physics::fluid::reduced_order::bem
+exd::engine::core
+exd::engine::mesh
+exd::engine::discretization::fdm
+exd::engine::numerics
+exd::engine::physics::thermal
+exd::engine::physics::fluid::reduced_order::bem
+exd::engine::physics::rigid_body
+exd::engine::physics::electromagnetics
+exd::engine::physics::reaction
+exd::engine::coupling
+exd::engine::fidelity
+exd::engine::presets
+exd::engine::backends
+exd::engine::output
+exd::engine::diagnostics
 ```
 
-Future domains: `exd::physics::thermal`, `exd::physics::structural`,
-`exd::physics::electromagnetics`.
+Legacy aliases are NOT kept: the old `exd::physics::*` root was migrated
+once, mechanically (conformance doc §3).
 
 Reference docs per module: `fdm3_architecture.md`, `engine_architecture.md`,
 `turbine_coupling_architecture.md`, `io_architecture.md`,
@@ -737,6 +752,8 @@ Before writing any code, ensure:
   implementation plan (integrators, rigid bodies, engines, compressors,
   electrical/EM, coupling, FVM/FEM/mesh roadmap)
 - `docs/agent_guide.md` — This document
-- `include/exd/physics/solver/plugin_interface.hpp` — ISolverPlugin contract
-- `src/fluid/reduced_order/bem/bem_internal.hpp` — BEM internal interfaces
-- `src/fluid/reduced_order/bem/bem_solver.cpp` — BEM orchestration (reference impl)
+- `engine/include/exd/engine/coupling/plugin_interface.hpp` — ISolverPlugin contract
+- `engine/src/physics/fluid/reduced_order/bem/bem_internal.hpp` — BEM internal interfaces
+- `engine/src/physics/fluid/reduced_order/bem/bem_solver.cpp` — BEM orchestration (reference impl)
+- `docs/implementation_spec.md` — authoritative architecture spec
+- `docs/implementation_spec_conformance.md` — conformance contract (layout/namespace map)

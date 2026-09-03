@@ -28,7 +28,7 @@ engine_config.hpp   EngineCycleType {Otto, Steam}
                         generator curve}
                     EngineGovernorConfig {enabled, setpoint_omega, PI, clamps}
                     EngineConfig {geometry, thermo, load, governor,
-                        integration (solver::IntegratorConfig), dt, max_steps,
+                        integration (numerics::IntegratorConfig), dt, max_steps,
                         initial θ/ω, history, csv_path}
 engine_result.hpp   EngineState {theta_rad, omega, cycles}
                     EngineStepResult {t, dt_used, state, piston_x/v, p_cyl,
@@ -71,7 +71,7 @@ No persisted cycle state → restartable, deterministic, batchable.
 - **Steam** (θ mod 2π, single-acting): saturated admission at p_boiler to
   cutoff, wet-steam polytrope `p = p_b·(V_cut/V)^n`, n = 1.13, exhaust to
   p_condenser. Dryness `x = x_cut·(V_cut/V)^(n−1)`; while x < 1 the
-  cylinder temperature sits ON THE SATURATION LINE (`thermo::saturation_temperature(p)`),
+  cylinder temperature sits ON THE SATURATION LINE (`physics::thermo::saturation_temperature(p)`),
   otherwise ideal-gas with trapped mass `ρ_g(p_b)·V_cut·x_cut`.
 
 ## 4. Energy accounting (Rankine-lite bookkeeping)
@@ -81,7 +81,7 @@ No persisted cycle state → restartable, deterministic, batchable.
 - Steam: per-cycle boiler heat `m·(h_g(T_sat,p_b) − h_f(T_sat,p_c))`
   accumulated over Δθ/2π; same efficiency metric.
 
-## 5. Steam EOS (thermo::steam)
+## 5. Steam EOS (physics::thermo::steam)
 
 Clausius–Clapeyron saturation model, single latent-heat anchor
 (p₀ = 101.325 kPa at 100 °C, h_fg = 2.257 MJ/kg, R = 461.5):
@@ -97,7 +97,7 @@ swap `SteamConstants` for tables without touching the cycle).
 
 ## 6. Control & loads
 
-- Governor: PI (control::IController) updated EXACTLY ONCE per step; the
+- Governor: PI (physics::control::IController) updated EXACTLY ONCE per step; the
   resulting throttle (heat fraction / steam admission scale) is held
   constant inside the integrator so RK4 stages never mutate controller
   state. Loads are pure T(ω) functions (friction const+viscous, generator

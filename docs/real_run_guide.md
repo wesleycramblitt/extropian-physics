@@ -25,7 +25,7 @@ auto turbine = exd::physics::turbine::make_turbine_definition(tb, status);
 //    the −Z inflow convention (Inlet at +z face, Outlet at −z, lateral symmetry).
 exd::physics::turbine::CoupledTurbineConfig c;
 c.turbine = turbine;
-c.grid = exd::physics::turbine::default_grid_config(3.0, 20);
+c.grid = exd::physics::presets::turbine::default_grid_config(3.0, 20);
 c.rotor_origin = {1.5, 1.5, 1.5};     // axis point in grid coordinates
 c.rotor_inertia = 0.1;
 c.fluid_steps_per_exchange = 10;
@@ -33,12 +33,12 @@ c.max_steps = 2000;
 c.csv_path = "out/turbine_rotor.csv"; // rotor states, one flushed row/step
 
 // 3. Field stamps at a cadence (real-time: wall-clock throttle).
-exd::physics::io::FldWriterConfig fw; fw.directory = "out/turbine_field";
-auto writer = exd::physics::io::make_fld_writer(fw, status);
-exd::physics::io::OutputScheduler sched({/*every_n_steps=*/50, /*wall_clock_s=*/0.0});
+exd::physics::output::FldWriterConfig fw; fw.directory = "out/turbine_field";
+auto writer = exd::physics::output::make_fld_writer(fw, status);
+exd::physics::output::OutputScheduler sched({/*every_n_steps=*/50, /*wall_clock_s=*/0.0});
 // → or {0, 0.25} for ~4 fps wall-clock real-time output
 
-auto r = exd::physics::turbine::run_coupled_turbine(c, status);
+auto r = exd::physics::presets::turbine::run_coupled_turbine(c, status);
 // r.history: t, omega, angle, torque, thrust, power, exchange;
 // r.final_omega/cp/tsr; r.aero_work/rotor_ke_change/load_work
 ```
@@ -53,7 +53,7 @@ cfg.initial_omega = 50.0;            // starter momentum
 cfg.governor.enabled = true;         // PI holds setpoint_omega
 cfg.governor.setpoint_omega = 200.0;
 cfg.csv_path = "out/engine_state.csv";
-auto r = exd::physics::engine::simulate_engine(cfg, status);
+auto r = exd::physics::presets::engine::simulate_engine(cfg, status);
 // CSV: time,theta_rad,omega_rad_s,piston_x_m,piston_v_m_s,p_cyl_pa,T_cyl_K,
 //      indicated_moment_Nm,load_moment_Nm,power_W,throttle,cycles
 ```
@@ -63,7 +63,7 @@ auto r = exd::physics::engine::simulate_engine(cfg, status);
 ```cpp
 #include <exd/physics/fluid/fdm3/fdm3_solver.hpp>
 auto cfg = ...;                        // FDM3Config with your BCs
-auto r = exd::physics::fluid::fdm3::run_fdm3_simulation(cfg, writer, &sched, &status);
+auto r = exd::physics::physics::fluid::fdm3::run_fdm3_simulation(cfg, writer, &sched, &status);
 // velocity + pressure stamps at the cadence; without a writer this is
 // equivalent to solve_fdm3(config) (pure, optimizer-batchable)
 ```

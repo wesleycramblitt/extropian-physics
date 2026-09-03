@@ -23,7 +23,7 @@ energy transfer is geometry-emergent, never a mode flag:
 | Map | `fluid::turbomachinery` | `solve_operating_map(...)` / `sample_operating_map(...)` |
 | Plenum | `fluid::lumped` | `plenum_derivative` / `step_plenum` (Greitzer, isentropic plenum) |
 | Driver | `fluid::turbomachinery` | `simulate_compression_system(...)` (shaft+plenum+governor+CSV) |
-| Polytrope | `thermo::polytropic` | stagnation-family relation primitives |
+| Polytrope | `physics::thermo::polytropic` | stagnation-family relation primitives |
 
 ## 2. Stage physics (total-state bookkeeping)
 
@@ -39,7 +39,7 @@ is an O(M²) error (~16 % in π at M = 0.5).
    `w_u1 = c_w1 − u`; `w_u2 = c_a·tan(β2)`; `c_w2 = u + w_u2`.
 3. Euler work and polytropic exit: `T02 = T01 + Δh₀/cp`;
    compression `π = τ^(γ·η_p/(γ−1))`, expansion `π = τ^(γ/((γ−1)·η_p))`
-   via `thermo::polytropic` (compressor and turbine polytropes are NOT
+   via `physics::thermo::polytropic` (compressor and turbine polytropes are NOT
    reciprocal; verified by test).
 4. Static exit: `T2 = T02 − c2²/(2cp)`, `p2 = p02·(T2/T02)^(γ/(γ−1))`.
 5. Choking on **relative** Mach at the rotor LE `M_rel = √(c_a² + w_u1²)/a1`
@@ -94,7 +94,7 @@ sustained oscillation, collapsed mean flow).
 thin (~460 lines) composition — DC motor (Phase D) + compressor stage
 stack (this module) + Greitzer plenum (this module) + optional PI speed
 governor (Phase C) modulating the throttle gain; RK4 via the shared
-integrator module; CSV streaming via `io::CsvSeriesWriter`. Conventions
+integrator module; CSV streaming via `output::CsvSeriesWriter`. Conventions
 mirror the engine: governor and motor update exactly once per step.
 
 - Compressor characteristic = `solve_stage_stack` output (p0_out − p_amb);
