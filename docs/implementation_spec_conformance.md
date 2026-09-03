@@ -231,4 +231,5 @@ consumers are in-repo and are updated).
 | W15f | Docs updated; 108 tests green | ✅ done |
 | PLAN | External-geometry boundary + general multibody roadmap recorded in `docs/multibody_architecture.md`: geometry authoring/MJCF/mesh loaders live in the external repo; the engine owns format-neutral model-description contracts; multibody generalized to arbitrary joint types (revolute/slide/ball/free/…) via the reduced-coordinates-for-trees + maximal-coordinates-with-constraints design | ✅ planned |
 | M1–M5 | Multibody implementation phases (tree joints → constraints → contacts → actuators → description reader) — not scheduled | roadmap |
+| SCHEMA | MultibodyDescription v0.1 nailed down and documented (`docs/multibody_description_v0.1.md`): SI/Z-up/wxyz conventions, joint DOF table, validation V1–V16, JSON mapping, MJCF and SerialManipulatorConfig correspondence, versioning policy | ✅ stable |
 

@@ -80,7 +80,11 @@ The manipulator generalization must cover:
 
 ## 3. The model description (the engine-owned contract)
 
-Format-neutral schema (versioned; the external converter emits it):
+**Authoritative schema: `docs/multibody_description_v0.1.md`** — v0.1 is
+STABLE (2026-09): conventions (SI, Z-up, wxyz quaternions, parent-frame
+anchoring), the exact struct layouts, the joint DOF table, validation rules
+V1–V16, JSON mapping, MJCF/current-config correspondence, and the versioning
+policy.  Summary of the shape:
 
 ```text
 MultibodyDescription
