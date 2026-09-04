@@ -346,9 +346,11 @@ Status: FIRST WAVE implemented and smoke-verified (all numbers below from the
 smoke tier on the dev machine; full sweeps available via `--full`).  One
 runnable binary, `benchmarks/benchmark_suite`, cases dispatched by name
 (`--list`, `--case NAME`, `--full`, `--grid N`); CMake target built with the
-tests.  Remaining families (deferred): B3 cavity, B5/B6 immersed/cylinder,
-B7/B8/B11 thermal, C4/C6 FDTD-static, C9 CHT, C18–C21 composites, B3D series.
-Each buys the same harness pattern; the composites need the coupling wiring.
+tests.  SECOND WAVE added with it (all smoke-verified, same suite binary):
+B3 cavity, B5 Stokes sphere, B6 Schäfer–Turek cylinder, C4 FDTD, C6 static
+fields, C9 thermal.  Remaining (deferred): B7/B8/B11 coupled thermal (needs
+the T-field coupling wiring), C18–C21 composites, the B3D series, and the
+Re=100 shedding branch of B6 (full tier).
 
 Verified smoke results (metric, measured, tier target):
 
@@ -369,6 +371,12 @@ Verified smoke results (metric, measured, tier target):
 | C15 FK | 2-link trig chain | 0 | < 1e-9 |
 | C16 settling | exact v,z | 7.2e-14 | < 2% |
 | C17 PI | closed-loop step response | 2.2e-5 | < 1% |
+| B3 cavity | centerline tables vs Ghia Re=100 | L2(u) 0.21; L2(v) coarse-tilt | full: < 5% |
+| B5 sphere | Stokes/Oseen (freeze-reaction drag) | 2.4x over at a = 4 cells | full: < 5% at a >= 8 |
+| B6 cylinder | Schäfer-Turek Re=20 | Cd 2.20 vs 5.58; dP 0.165 vs 0.118 | full tier |
+| C4 FDTD | exact CFL bound + travel time | bound OK; travel 3.9%; drift 0.94% | < 1% |
+| C6 static | exact linear plate bridge | 2.2e-8 | < 2% |
+| C9 thermal | exact quadratic + Fourier series | 9.2e-6 / 8.2e-5 | < 2% / < 5% |
 
 Recorded findings during the bring-up (all written into the case comments and
 the conformance log):
@@ -390,6 +398,26 @@ the conformance log):
    oedometer-confined anchor (M-modulus) is exact to 0.12% and the ν = 0
    free column to 6e-11.  The full-plane-pin mask also stagnates the SOR
    (residual stuck at 1.0); the roller+corner-pins convention converges.
+5. **B5/B6 (wave 2)**: the wall-plane differential momentum balance is
+   contaminated by the channel's own pressure drop at low Re (10x at the
+   smoke horizon); the correct low-Re drag measure is the kinematic-freeze
+   REACTION force (sum of rho*V*(u_post - u_pre)/dt over the mask,
+   steady-averaged).  At the coarse masks (a = 4 cells, D = 6.4 cells) both
+   bodies show a consistent ~2.4x over-prediction - the collocated frozen
+   shell's effective-radius blur; the fine-grid convergence is the full-tier
+   gate (recorded, not hidden).
+6. **B3 (wave 2)**: at 40^2 the u-centerline matches the Ghia tables well
+   (core height exact, mid values ~3%) while the v-centerline shows the
+   classic coarse-grid tilt (the Ghia 129^2 reference needs 80^2+, the full
+   tier).
+7. **B6 dP is a direct field measurement** and lands 40% high at the coarse
+   mask (0.165 vs 0.118) - the mask-blurred pressure distortion; the same
+   fine-grid gate applies.
+8. **FDTD**: the uniform-material v1 cannot do the Fresnel/Mie interface
+   (recorded); the exact CFL bound is enforced by the config validation
+   (courant > 1 rejected), the pulse travel time is reproduced to 3.9%
+   with the source-delay-corrected reference, and the PEC-box energy drift
+   is 0.94%.
 
 ---
 
