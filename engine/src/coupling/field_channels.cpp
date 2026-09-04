@@ -1,59 +1,28 @@
-// Generic field channels: scalar/vector fields on structured grids
-// (trilinear node interpolation) plus adapters that expose the two halves of
-// a fluid flow field (velocity, pressure) as standalone channels.  These are
-// the data currency of the coupling layer shared by every physics domain.
+// Field-channel adapters: wrap a structured grid as the coupling
+// field interfaces (scalar/vector flow fields).  The interpolation
+// combination arithmetic is shared: mesh::interp::trilinear.
 
 #include <exd/engine/coupling/field_channels.hpp>
-#include <exd/engine/coupling/field_sampler.hpp>
+#include <exd/engine/mesh/interpolation.hpp>
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <vector>
 
 namespace exd::engine::coupling
 {
 
-namespace
-{
-
-// ── Trilinear node interpolation ───────────────────────────────────
-// Mirrors the structured-grid flow field in field_sampler.cpp: nodes are
-// indexed idx(i,j,k) = i + nx·(j + ny·k); `base` is the flat offset of the
-// lower node and `stride` scales the +i/+j/+k neighbor offsets (1 for
-// scalar grids, 3 for vector components).
-
+// local alias: the combination arithmetic is shared (mesh::interp::trilinear)
 inline double trilinear_scalar(const std::vector<double>& values,
                                std::size_t base, std::size_t stride,
                                int nx, int ny,
                                double fx, double fy, double fz)
 {
-    const std::size_t sx = stride;                                            // +i neighbor
-    const std::size_t sy = stride * static_cast<std::size_t>(nx);             // +j neighbor
-    const std::size_t sz = stride * static_cast<std::size_t>(nx) *
-                           static_cast<std::size_t>(ny);                      // +k neighbor
-
-    const std::size_t i000 = base;
-    const std::size_t i100 = base + sx;
-    const std::size_t i010 = base + sy;
-    const std::size_t i110 = base + sx + sy;
-    const std::size_t i001 = base + sz;
-    const std::size_t i101 = base + sx + sz;
-    const std::size_t i011 = base + sy + sz;
-    const std::size_t i111 = base + sx + sy + sz;
-
-    const double c00 = values[i000] * (1.0 - fx) + values[i100] * fx;
-    const double c10 = values[i010] * (1.0 - fx) + values[i110] * fx;
-    const double c01 = values[i001] * (1.0 - fx) + values[i101] * fx;
-    const double c11 = values[i011] * (1.0 - fx) + values[i111] * fx;
-
-    const double c0 = c00 * (1.0 - fy) + c10 * fy;
-    const double c1 = c01 * (1.0 - fy) + c11 * fy;
-
-    return c0 * (1.0 - fz) + c1 * fz;
+    return exd::engine::mesh::interp::trilinear(values, base, stride, nx, ny, fx, fy, fz);
 }
+
+namespace {
 
 // Map a world-space query onto the local cell fractions and the lower-node
 // flat index of the containing cell.  Returns false when the query lies

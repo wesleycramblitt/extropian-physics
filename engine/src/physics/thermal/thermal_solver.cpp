@@ -2,6 +2,9 @@
 // + source on a regular grid, SOR relaxation (see header).
 
 #include <exd/engine/physics/thermal/thermal_solver.hpp>
+#include <exd/engine/mesh/interpolation.hpp>
+
+#include <exd/engine/numerics/sor.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -251,98 +254,96 @@ double sor_sweep(const ThermalConfig& config, std::vector<double>& T,
     const int nx = g.dims[0];
     const int ny = g.dims[1];
     const int nz = g.dims[2];
-    const double dx = g.spacing[0];
-    const double dy = g.spacing[1];
-    const double dz = g.spacing[2];
-    const double Dx = 1.0 / (dx * dx);
-    const double Dy = 1.0 / (dy * dy);
-    const double Dz = 1.0 / (dz * dz);
+    const double Dx = 1.0 / (g.spacing[0] * g.spacing[0]);
+    const double Dy = 1.0 / (g.spacing[1] * g.spacing[1]);
+    const double Dz = 1.0 / (g.spacing[2] * g.spacing[2]);
 
     const double k = config.material.conductivity;
     const double rho_cp = config.material.density * config.material.specific_heat;
     const bool has_source_channel = config.source_channel != nullptr;
     const double source = config.source_density;
-    constexpr double kOmega = 1.5;
 
-    double max_residual = 0.0;
-    for (int kk = 0; kk < nz; ++kk)
-        for (int jj = 0; jj < ny; ++jj)
-            for (int ii = 0; ii < nx; ++ii)
-            {
-                const std::size_t I = flat_index(g, ii, jj, kk);
-                if (fixed[I])
-                    continue;
+    // The point stencil (conductivity weights, upwind advection diagonal,
+    // volumetric source, implicit time term) stays here; the sweep loop,
+    // omega relaxation and max-change residual are the shared
+    // numerics::sor_solve skeleton.
+    auto next = [&](int ii, int jj, int kk) {
+        const std::size_t I = flat_index(g, ii, jj, kk);
+        double tm_x = 0.0, tp_x = 0.0;
+        double tm_y = 0.0, tp_y = 0.0;
+        double tm_z = 0.0, tp_z = 0.0;
+        axis_neighbors(g, T, ii, jj, kk, 0, tm_x, tp_x);
+        axis_neighbors(g, T, ii, jj, kk, 1, tm_y, tp_y);
+        axis_neighbors(g, T, ii, jj, kk, 2, tm_z, tp_z);
 
-                double tm_x = 0.0, tp_x = 0.0;
-                double tm_y = 0.0, tp_y = 0.0;
-                double tm_z = 0.0, tp_z = 0.0;
-                axis_neighbors(g, T, ii, jj, kk, 0, tm_x, tp_x);
-                axis_neighbors(g, T, ii, jj, kk, 1, tm_y, tp_y);
-                axis_neighbors(g, T, ii, jj, kk, 2, tm_z, tp_z);
+        double qsource = source;
+        if (has_source_channel)
+        {
+            const std::array<double, 3> p{
+                g.origin[0] + ii * g.spacing[0],
+                g.origin[1] + jj * g.spacing[1],
+                g.origin[2] + kk * g.spacing[2]};
+            config.source_channel->sample(p, qsource);
+        }
+        double numerator = k * ((tm_x + tp_x) * Dx +
+                                (tm_y + tp_y) * Dy +
+                                (tm_z + tp_z) * Dz) +
+                           qsource;
+        double denominator = 2.0 * k * (Dx + Dy + Dz);
 
-                // Conducting part of the implicit numerator and diagonal.
-                double qsource = source;
-                if (has_source_channel)
-                {
-                    const std::array<double, 3> p{
-                        g.origin[0] + ii * g.spacing[0],
-                        g.origin[1] + jj * g.spacing[1],
-                        g.origin[2] + kk * g.spacing[2]};
-                    config.source_channel->sample(p, qsource);
-                }
-                double numerator = k * ((tm_x + tp_x) * Dx +
-                                        (tm_y + tp_y) * Dy +
-                                        (tm_z + tp_z) * Dz) +
-                                   qsource;
-                double denominator = 2.0 * k * (Dx + Dy + Dz);
+        const std::array<double, 3> u = node_velocity(config, ii, jj, kk, status);
+        if (u[0] > 0.0)
+        {
+            denominator += rho_cp * u[0] / g.spacing[0];
+            numerator += rho_cp * u[0] * tm_x / g.spacing[0];
+        }
+        else if (u[0] < 0.0)
+        {
+            denominator -= rho_cp * u[0] / g.spacing[0];
+            numerator -= rho_cp * u[0] * tp_x / g.spacing[0];
+        }
+        if (u[1] > 0.0)
+        {
+            denominator += rho_cp * u[1] / g.spacing[1];
+            numerator += rho_cp * u[1] * tm_y / g.spacing[1];
+        }
+        else if (u[1] < 0.0)
+        {
+            denominator -= rho_cp * u[1] / g.spacing[1];
+            numerator -= rho_cp * u[1] * tp_y / g.spacing[1];
+        }
+        if (u[2] > 0.0)
+        {
+            denominator += rho_cp * u[2] / g.spacing[2];
+            numerator += rho_cp * u[2] * tm_z / g.spacing[2];
+        }
+        else if (u[2] < 0.0)
+        {
+            denominator -= rho_cp * u[2] / g.spacing[2];
+            numerator -= rho_cp * u[2] * tp_z / g.spacing[2];
+        }
 
-                // First-order upwind advection with the per-node velocity.
-                const std::array<double, 3> u = node_velocity(config, ii, jj, kk, status);
-                if (u[0] > 0.0)
-                {
-                    denominator += rho_cp * u[0] / dx;
-                    numerator += rho_cp * u[0] * tm_x / dx;
-                }
-                else if (u[0] < 0.0)
-                {
-                    denominator -= rho_cp * u[0] / dx;
-                    numerator -= rho_cp * u[0] * tp_x / dx;
-                }
-                if (u[1] > 0.0)
-                {
-                    denominator += rho_cp * u[1] / dy;
-                    numerator += rho_cp * u[1] * tm_y / dy;
-                }
-                else if (u[1] < 0.0)
-                {
-                    denominator -= rho_cp * u[1] / dy;
-                    numerator -= rho_cp * u[1] * tp_y / dy;
-                }
-                if (u[2] > 0.0)
-                {
-                    denominator += rho_cp * u[2] / dz;
-                    numerator += rho_cp * u[2] * tm_z / dz;
-                }
-                else if (u[2] < 0.0)
-                {
-                    denominator -= rho_cp * u[2] / dz;
-                    numerator -= rho_cp * u[2] * tp_z / dz;
-                }
+        if (inv_time > 0.0)
+        {
+            denominator += inv_time;
+            numerator += inv_time * T_old[I];
+        }
+        return numerator / denominator;
+    };
+    auto cur = [&](int ii, int jj, int kk) {
+        return T[flat_index(g, ii, jj, kk)];
+    };
+    auto set = [&](int ii, int jj, int kk, double v) {
+        T[flat_index(g, ii, jj, kk)] = v;
+    };
+    auto skip = [&](int ii, int jj, int kk) {
+        return fixed[flat_index(g, ii, jj, kk)];
+    };
 
-                // Implicit time term: (rho*cp/dt)*T_new on the diagonal, the
-                // PREVIOUS time level on the right-hand side.
-                if (inv_time > 0.0)
-                {
-                    denominator += inv_time;
-                    numerator += inv_time * T_old[I];
-                }
-
-                const double t_new = numerator / denominator;
-                const double residual = std::abs(t_new - T[I]);
-                max_residual = std::max(max_residual, residual);
-                T[I] = (1.0 - kOmega) * T[I] + kOmega * t_new;
-            }
-    return max_residual;
+    // ONE pass per caller iteration (the steady/transient loops keep their
+    // own convergence + accounting; the point stencil stays here).
+    return numerics::sor_one_pass(nx, ny, nz, next, cur, set, skip,
+                                  1.5, numerics::SorResidualMode::MaxChange);
 }
 
 } // anonymous namespace
@@ -578,21 +579,19 @@ public:
         const int i0 = static_cast<int>(std::floor(fx));
         const int j0 = static_cast<int>(std::floor(fy));
         const int k0 = static_cast<int>(std::floor(fz));
-        const int i1 = std::min(i0 + 1, nx - 1);
-        const int j1 = std::min(j0 + 1, ny - 1);
-        const int k1 = std::min(k0 + 1, nz - 1);
-        const double ax = fx - static_cast<double>(i0);
-        const double ay = fy - static_cast<double>(j0);
-        const double az = fz - static_cast<double>(k0);
+        // clamp to the last CELL so the shared primitive never leaves the grid
+        const int i0c = std::min(i0, nx - 2);
+        const int j0c = std::min(j0, ny - 2);
+        const int k0c = std::min(k0, nz - 2);
+        // fractions relative to the CLAMPED cell (boundary samples land on
+        // the last cell with fraction 1, so the shared primitive picks the
+        // correct boundary node)
+        const double ax = fx - static_cast<double>(i0c);
+        const double ay = fy - static_cast<double>(j0c);
+        const double az = fz - static_cast<double>(k0c);
         const auto& v = state_.temperature.values;
-        auto at = [&](int i, int j, int k) { return v[flat_index(g, i, j, k)]; };
-        const double c00 = at(i0, j0, k0) * (1.0 - ax) + at(i1, j0, k0) * ax;
-        const double c10 = at(i0, j1, k0) * (1.0 - ax) + at(i1, j1, k0) * ax;
-        const double c01 = at(i0, j0, k1) * (1.0 - ax) + at(i1, j0, k1) * ax;
-        const double c11 = at(i0, j1, k1) * (1.0 - ax) + at(i1, j1, k1) * ax;
-        const double c0 = c00 * (1.0 - ay) + c10 * ay;
-        const double c1 = c01 * (1.0 - ay) + c11 * ay;
-        value_out = c0 * (1.0 - az) + c1 * az;
+        value_out = exd::engine::mesh::interp::trilinear(
+            v, flat_index(g, i0c, j0c, k0c), 1, nx, ny, ax, ay, az);
         return true;
     }
 

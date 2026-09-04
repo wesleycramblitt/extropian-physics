@@ -128,6 +128,26 @@ delete it — shared-but-unconsumed is a trust signal).  (~½ day.)
 
 ---
 
+## 5. Priority plan — status
+
+| # | Item | Effort | Status |
+|---|---|---|---|
+| P1 | Shared fractional-step projection operator (H1) | ½–1 d | ✅ DONE — `project_velocity()` (OuterSIMPLE/InnerStage) + `apply_pressure_gradient()` in fdm3_pressure; the solver step and the Heun/CN integrators are wired to it; `correct_velocity` refactored onto the shared gradient (caught a swapped under-relaxation weight during the bring-up — the blend keeps (1−α) of the OLD state; 109/109 green, bench rows identical) |
+| P2 | dt layer: diffusive bound in the clamp + validate warning (H3) | ½ d | ✅ DONE — the adaptive clamp enforces dt ≤ 1/(ν·2Σ1/dx²); `validate()` warns when a fixed dt violates the bound |
+| P3 | field()-sync hardening (H2) | ½ d | ✅ DONE — dirty-flag ingest (untouched adapters cost nothing), hard error on any adapter/grid mismatch incl. array sizes, p-ingestion documented; regression test added |
+| P4 | numerics::sor engine (4 copies + the sign fork); single trilinear; bench 2×2 helper | 1 d | ✅ DONE — `numerics::sor_solve`/`sor_one_pass` skeleton consumed by fdm3/fdm pressure, static fields and thermal (point stencils stay domain-local, sign conventions visible at the call sites); `mesh::interp::trilinear` replaces the 5 copies; `benchmarks/analytic_refs.hpp` single-sources the 2×2 eigen/expansion |
+| P5 | W16-transparency quantifying regression + fix ticket | hrs–2 d | pending |
+| P6 | last_solid_reaction() / de-brittle B5/B6; stage-BC-refresh experiment; order test for Heun | 1 d | pending |
+| P7 | fdm3_layout index header, then the stencil/BC consolidation onto discretization | incremental | pending |
+
+Findings during P1–P4: (1) the padded-grid wrappers must shift the shared
+engine's 0-based indices onto the [1..nx] interior — the first port attempt
+silently solved the ghost-shifted slab (caught by the Poisson quadratic
+test); (2) the correct_velocity under-relaxation keeps (1−α) of the OLD
+state, and a swapped-weight refactor destroyed the predictor at α=1 (the
+TGV decay vanished — caught by the TGV + convection tests); (3) the fdm 2D
+port had the same off-by-one masked by test geometry.
+
 ## 5. Priority plan
 
 | # | Item | Effort | Gate |

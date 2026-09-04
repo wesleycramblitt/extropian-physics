@@ -6,6 +6,8 @@
 
 #include <exd/engine/physics/electromagnetics/static_fields.hpp>
 
+#include <exd/engine/numerics/sor.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -194,16 +196,13 @@ StaticFieldResult solve_static_field(const StaticFieldConfig& config)
         }
     }
 
-    // ── SOR iteration ─────────────────────────────────────────────
+    // ── SOR iteration ──
     // Discrete 7-point Poisson: at interior nodes that are not Dirichlet,
-    //   phi_new = ((phi[i−1]+phi[i+1])/hx²
-    //              + (phi[j−1]+phi[j+1])/hy²
-    //              + (phi[k−1]+phi[k+1])/hz² − b) / (2/hx² + 2/hy² + 2/hz²)
-    // with SOR relaxation phi += sor_omega·(phi_new − phi).  The sweep
-    // residual is the maximum pre-update change |phi_new − phi|; the sweep
-    // is converged when it drops below tolerance.  Dirichlet nodes are never
-    // updated.  If convergence is not reached inside max_iterations the best
-    // iterate is still returned with ok=true and a warning.
+    //   phi_new = ((phi[i-1]+phi[i+1])/hx^2 + (phi[j-1]+phi[j+1])/hy^2
+    //              + (phi[k-1]+phi[k+1])/hz^2 - b) / (2/hx^2 + 2/hy^2 + 2/hz^2)
+    // The sweep skeleton (omega relaxation, max-change residual, iteration
+    // cap + warning) is the shared numerics::sor_solve; the mirror-ghost
+    // policy and the Dirichlet skip stay here.
     const double hx2 = hx * hx;
     const double hy2 = hy * hy;
     const double hz2 = hz * hz;
@@ -211,67 +210,35 @@ StaticFieldResult solve_static_field(const StaticFieldConfig& config)
     const std::size_t nxs = static_cast<std::size_t>(nx);
     const std::size_t nxy = nxs * static_cast<std::size_t>(ny);
 
-    // Neighbor offsets with MIRROR ghosts at the boundary: a boundary node
-    // whose face is Neumann is relaxed with the out-of-plane neighbor
-    // replaced by its mirror image (zero normal gradient).  Dirichlet
-    // boundary nodes are skipped, so the mirror never reads an out-of-range
-    // node for them.
-    const auto D = FaceKind::Dirichlet;
-    auto xm = [&](int i, std::size_t base) {
-        return (i > 0) ? (base - 1) : (base + 1);
-    };
-    auto xp = [&](int i, std::size_t base) {
-        return (i < nx - 1) ? (base + 1) : (base - 1);
-    };
-    auto ym = [&](int j, std::size_t base) {
-        return (j > 0) ? (base - nxs) : (base + nxs);
-    };
-    auto yp = [&](int j, std::size_t base) {
-        return (j < ny - 1) ? (base + nxs) : (base - nxs);
-    };
-    auto zm = [&](int k, std::size_t base) {
-        return (k > 0) ? (base - nxy) : (base + nxy);
-    };
-    auto zp = [&](int k, std::size_t base) {
-        return (k < nz - 1) ? (base + nxy) : (base - nxy);
-    };
-    (void)D;
+    auto xm = [&](int i, std::size_t base) { return (i > 0) ? (base - 1) : (base + 1); };
+    auto xp = [&](int i, std::size_t base) { return (i < nx - 1) ? (base + 1) : (base - 1); };
+    auto ym = [&](int j, std::size_t base) { return (j > 0) ? (base - nxs) : (base + nxs); };
+    auto yp = [&](int j, std::size_t base) { return (j < ny - 1) ? (base + nxs) : (base - nxs); };
+    auto zm = [&](int k, std::size_t base) { return (k > 0) ? (base - nxy) : (base + nxy); };
+    auto zp = [&](int k, std::size_t base) { return (k < nz - 1) ? (base + nxy) : (base - nxy); };
 
-    int iterations = 0;
-    double residual = 0.0;
-    for (; iterations < config.max_iterations; ++iterations)
-    {
-        double sweep_max = 0.0;
-        for (int k = 0; k < nz; ++k)
-            for (int j = 0; j < ny; ++j)
-                for (int i = 0; i < nx; ++i)
-                {
-                    const std::size_t id = grid_index(i, j, k, nx, ny);
-                    if (dirichlet[id])
-                        continue;
-                    // Neumann boundary nodes: the mirror ghost substitutes
-                    // the out-of-range neighbor (only valid when the local
-                    // face is Neumann; Dirichlet boundary nodes were skipped).
-                    const std::size_t ixm = xm(i, id);
-                    const std::size_t ixp = xp(i, id);
-                    const std::size_t jym = ym(j, id);
-                    const std::size_t jyp = yp(j, id);
-                    const std::size_t kzm = zm(k, id);
-                    const std::size_t kzp = zp(k, id);
+    auto next = [&](int i, int j, int k) {
+        const std::size_t id = grid_index(i, j, k, nx, ny);
+        const std::size_t ixm = xm(i, id), ixp = xp(i, id);
+        const std::size_t jym = ym(j, id), jyp = yp(j, id);
+        const std::size_t kzm = zm(k, id), kzp = zp(k, id);
+        return ((phi[ixm] + phi[ixp]) / hx2 +
+                (phi[jym] + phi[jyp]) / hy2 +
+                (phi[kzm] + phi[kzp]) / hz2 - rhs[id]) / denom;
+    };
+    auto cur = [&](int i, int j, int k) { return phi[grid_index(i, j, k, nx, ny)]; };
+    auto setp = [&](int i, int j, int k, double v) { phi[grid_index(i, j, k, nx, ny)] = v; };
+    auto skip = [&](int i, int j, int k) { return dirichlet[grid_index(i, j, k, nx, ny)]; };
 
-                    const double phi_new = ((phi[ixm] + phi[ixp]) / hx2 +
-                                            (phi[jym] + phi[jyp]) / hy2 +
-                                            (phi[kzm] + phi[kzp]) / hz2 -
-                                            rhs[id]) / denom;
-                    const double delta = phi_new - phi[id];
-                    sweep_max = std::max(sweep_max, std::fabs(delta));
-                    phi[id] += config.sor_omega * delta;
-                }
-        residual = sweep_max;
-        if (residual < config.tolerance)
-            break;
-    }
-    if (iterations >= config.max_iterations)
+    numerics::SorConfig sor_cfg;
+    sor_cfg.omega = config.sor_omega;
+    sor_cfg.tolerance = config.tolerance;
+    sor_cfg.max_iterations = config.max_iterations;
+    auto sor_r = numerics::sor_solve(nx, ny, nz, next, cur, setp, skip,
+                                     sor_cfg, numerics::SorResidualMode::MaxChange);
+    int iterations = static_cast<int>(sor_r.iterations);
+    double residual = sor_r.residual;
+    if (!sor_r.converged)
         result.warnings.push_back("static field: SOR did not converge in " +
                                   std::to_string(config.max_iterations) +
                                   " iterations");

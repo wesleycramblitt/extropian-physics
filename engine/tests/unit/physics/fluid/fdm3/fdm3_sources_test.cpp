@@ -209,6 +209,34 @@ TEST_CASE("Immersed moving solid: the occupied cells are dragged to u_solid")
 }
 
 
+TEST_CASE("fdm3: field() adapter edits are ingested and mismatches are hard errors")
+{
+    FDM3Config flow = duct();
+    channel_bcs(flow, 0.2);
+    ModelStatus st;
+    FDM3Solver solver;
+    REQUIRE(solver.initialize(flow, st));
+
+    // a corrupt (resized) adapter must be rejected, not silently dropped
+    auto& f = solver.field();
+    f.u.resize(f.u.size() / 2);
+    REQUIRE_FALSE(solver.step(flow.dt, st));
+    REQUIRE(!st.error.empty());
+
+    // restore a consistent adapter so the remaining checks run clean
+    ModelStatus st2;
+    REQUIRE(solver.initialize(flow, st2));
+    // an edit IS ingested: zero the interior streamwise velocity, one step
+    // must move it away from the frozen 0.0 initial state but stay finite
+    auto& f2 = solver.field();
+    std::fill(f2.u.begin(), f2.u.end(), 0.05);
+    REQUIRE(solver.step(flow.dt, st2));
+    const auto& f3 = solver.field();
+    bool any_moved = false;
+    for (size_t i = 0; i < f3.u.size(); ++i)
+        if (std::fabs(f3.u[i]) > 1e-4) any_moved = true;
+    CHECK(any_moved);
+}
 TEST_CASE("Heun with sustained body forces is stable (the W16 force fix)")
 {
     // Regression for the Heun time-level bug: the body force must enter

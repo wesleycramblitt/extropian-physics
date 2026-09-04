@@ -41,6 +41,18 @@ bool FDM3Config::validate(std::string& error, std::vector<std::string>& warnings
     if (adaptive_dt && cfl_target <= 0.0) {
         error = "CFL target must be positive when adaptive dt is enabled"; return false;
     }
+    if (nu > 0.0 && adaptive_dt == false) {
+        // with adaptive_dt the clamp enforces the bound; without it, warn so
+        // the run does not blow up in ~10 steps on the explicit diffusion
+        const double dsum = 2.0 / (dx() * dx()) + 2.0 / (dy() * dy()) + 2.0 / (dz() * dz());
+        const double dt_diff = 1.0 / (nu * dsum);
+        if (dt > dt_diff)
+            warnings.push_back("fdm3: dt = " + std::to_string(dt) +
+                               " exceeds the explicit-diffusion stability limit "
+                               "nu*dt*2*(1/dx^2+1/dy^2+1/dz^2) <= 1 (limit dt = " +
+                               std::to_string(dt_diff) +
+                               "); enable adaptive_dt or reduce dt");
+    }
 
     if (boundary_conditions.empty()) {
         error = "At least one boundary condition required"; return false;
@@ -156,6 +168,17 @@ static void clamp_dt_from_cfl(const FDM3Grid& g, const FDM3Config& config, doubl
     const double vmax = max_velocity(g);
     double dt_cfl = (vmax > 1e-12) ? config.cfl_target * hmin / vmax : config.dt;
     dt_cfl = std::min(dt_cfl, config.dt);
+    // Explicit-diffusion stability of the collocated momentum step (the
+    // 3D 7-point Laplacian bound):  dt <= 1/(nu*(2/dx^2+2/dy^2+2/dz^2)).
+    // The advection-only clamp historically let ν·dt/h² > 1/6 runs blow up
+    // in ~10 steps (the W18 finding; previously only the benchmark demos
+    // carried the limit).
+    const double nu = config.kinematic_viscosity();
+    if (nu > 0.0) {
+        const double dsum = 2.0 / (g.dx * g.dx) + 2.0 / (g.dy * g.dy) + 2.0 / (g.dz * g.dz);
+        const double dt_diff = 1.0 / (nu * dsum);
+        dt_cfl = std::min(dt_cfl, dt_diff);
+    }
     const double floor = 1e-6 * hmin;
     dt = std::max(dt_cfl, floor);
 }
@@ -207,12 +230,22 @@ bool FDM3Solver::step(double dt, ModelStatus& status) {
 
     // 0. Ingest external field edits (the W16 per-step manipulation seam:
     //    field() is documented as apply-the-change-then-step; the adapter
-    //    must therefore feed the grid BEFORE the step uses it — previously
-    //    extract_field() only ever copied grid -> adapter, so immersed
-    //    freeze/penalty edits and hand-set initial conditions were silently
-    //    inert on the solver state).
-    if (field_.nx == grid_->nx && field_.ny == grid_->ny && field_.nz == grid_->nz &&
-        !field_.u.empty()) {
+    //    must therefore feed the grid BEFORE the step uses it).  Only runs
+    //    when the mutable field() was actually touched (dirty flag); a
+    //    mismatch is a HARD error — a silently-dropped edit was the bug this
+    //    seam was invented to fix.  The pressure values are ingested
+    //    deliberately: they seed this step's momentum-RHS pressure gradient.
+    if (field_dirty_) {
+        const size_t cells = static_cast<size_t>(grid_->nx) * grid_->ny * grid_->nz;
+        if (field_.nx != grid_->nx || field_.ny != grid_->ny ||
+            field_.nz != grid_->nz || field_.u.size() != cells ||
+            field_.v.size() != cells || field_.w.size() != cells ||
+            field_.p.size() != cells) {
+            status.ok = false;
+            status.error = "fdm3: field() adapter size does not match the solver "
+                           "grid (edit discarded — re-initialize the solver)";
+            return false;
+        }
         for (int k = 0; k < grid_->nz; ++k)
             for (int j = 0; j < grid_->ny; ++j)
                 for (int i = 0; i < grid_->nx; ++i) {
@@ -223,6 +256,7 @@ bool FDM3Solver::step(double dt, ModelStatus& status) {
                     grid_->w[gid] = field_.w[fid];
                     grid_->p[gid] = field_.p[fid];
                 }
+        field_dirty_ = false;
     }
 
     // 1. Save state for SIMPLE
@@ -241,19 +275,11 @@ bool FDM3Solver::step(double dt, ModelStatus& status) {
                            body_force_active_ ? &body_fy_ : nullptr,
                            body_force_active_ ? &body_fz_ : nullptr);
 
-    // 3. Pressure-velocity coupling (SIMPLE): Poisson solve for p' with a
-    //    zero initial guess; periodic face ghosts are refreshed during the
-    //    relaxation (see solve_pressure_poisson).
-    compute_pressure_rhs(*grid_, config_, dt_eff);
-    std::fill(grid_->p.begin(), grid_->p.end(), 0.0);
-    solve_pressure_poisson(*grid_, config_);
-
-    // Stash p' and restore the real pressure field.
-    std::copy(grid_->p.begin(), grid_->p.end(), grid_->p_prime.begin());
-    std::copy(grid_->p_old.begin(), grid_->p_old.end(), grid_->p.begin());
-
-    // 4-5. Correct velocity (relative to _old) and update pressure.
-    correct_velocity(*grid_, config_, dt_eff);
+    // 3-5. Pressure-velocity coupling (SIMPLE): the shared fractional-step
+    //    operator — Poisson solve for p' (zero initial guess; periodic ghost
+    //    faces refreshed during the relaxation), stash p', restore the real
+    //    pressure, under-relaxed velocity correction + pressure update.
+    project_velocity(*grid_, config_, dt_eff, ProjectionMode::OuterSIMPLE);
 
     // 6. Boundary conditions.
     apply_boundary_conditions(*grid_, config_);
@@ -274,7 +300,10 @@ bool FDM3Solver::step(double dt, ModelStatus& status) {
     return true;
 }
 
-FDM3FieldData& FDM3Solver::field() { return field_; }
+FDM3FieldData& FDM3Solver::field() {
+    field_dirty_ = true;   // the adapter may be edited; step() will ingest it
+    return field_;
+}
 
 bool FDM3Solver::set_body_force(std::span<const double> fx, std::span<const double> fy,
                                 std::span<const double> fz, ModelStatus& status) {

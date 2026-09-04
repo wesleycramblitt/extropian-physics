@@ -3,6 +3,7 @@
 // C12 reactor, C13 Darcy, C14 slider-crank, C15 FK, C16 Stokes settling,
 // C17 PI closed loop.
 
+#include "analytic_refs.hpp"
 #include "cases.hpp"
 
 #include <exd/engine/core/model_status.hpp>
@@ -56,27 +57,19 @@ void case_plenum(const RunSpec& spec) {
     const auto eos = thermo::make_ideal_gas({1.4, 287.05});   // γ, R
     const double a2 = 1.4 * 287.05 * cfg.T_ambient;           // a² = γRT
 
-    // A = [[0, −1/I], [a²/V, −a²·t1/V]]
-    const double a11 = 0.0, a12 = -1.0 / I;
-    const double a21 = a2 / V, a22 = -a2 * t1 / V;
-    const double tr = a11 + a22, det = a11 * a22 - a12 * a21;
-    const double disc = tr * tr - 4.0 * det;
-    const double l1 = (tr - std::sqrt(disc)) / 2.0, l2 = (tr + std::sqrt(disc)) / 2.0;
-    // eigenvectors
-    const double v1x = a12, v1y = l1 - a11;
-    const double v2x = a12, v2y = l2 - a11;
+    // A = [[0, −1/I], [a²/V, −a²·t1/V]] — the shared 2×2 machinery
+    const auto e = eigen2x2(0.0, -1.0 / I, a2 / V, -a2 * t1 / V);
+    const double l1 = e.lam1, l2 = e.lam2;
 
     PlenumState s0;
     s0.p_plenum = cfg.p_ambient + 2000.0;
     s0.mdot_duct = 0.05;
     const double m0 = s0.mdot_duct, dp0 = s0.p_plenum - cfg.p_ambient;
-    // expansion in the eigenbasis: solve [v1 v2] c = x0
-    const double den = v1x * v2y - v2x * v1y;
-    const double c1 = (m0 * v2y - dp0 * v2x) / den;
-    const double c2 = (dp0 * v1x - m0 * v1y) / den;
+    const auto c = expansion2x2(e, m0, dp0);
+    const double c1 = c[0], c2 = c[1];
     auto exact = [&](double t, double& m, double& dp) {
-        m = c1 * v1x * std::exp(l1 * t) + c2 * v2x * std::exp(l2 * t);
-        dp = c1 * v1y * std::exp(l1 * t) + c2 * v2y * std::exp(l2 * t);
+        m = c1 * e.v1x * std::exp(l1 * t) + c2 * e.v2x * std::exp(l2 * t);
+        dp = c1 * e.v1y * std::exp(l1 * t) + c2 * e.v2y * std::exp(l2 * t);
     };
 
     const double dt = 2.0e-4;                      // λ·dt ~ 0.9 (RK4-stable on the stiff mode)
@@ -477,23 +470,17 @@ void case_pi(const RunSpec&) {
     using control::make_pi_controller;
     const double tau = 0.5, kp = 4.0, ki = 2.0;
     // state [y, I]: y' = (kp·e + I − y)/τ, I' = ki·e, e = 1 − y
-    // A = [[−(1+kp)/τ, 1/τ], [−ki, 0]]
+    // A = [[−(1+kp)/τ, 1/τ], [−ki, 0]] — the shared 2×2 machinery
     const double a11 = -(1.0 + kp) / tau, a12 = 1.0 / tau;
-    const double a21 = -ki, a22 = 0.0;
-    const double tr = a11 + a22, det = a11 * a22 - a12 * a21;
-    const double disc = tr * tr - 4.0 * det;
-    const double l1 = (tr - std::sqrt(disc)) / 2.0, l2 = (tr + std::sqrt(disc)) / 2.0;
+    const auto e = eigen2x2(a11, a12, -ki, 0.0);
+    const double l1 = e.lam1, l2 = e.lam2;
     // steady state: y_ss = 1, I_ss from 0 = a11·1 + a12·I + kp/τ
     const double I_ss = -((a11 + kp / tau) / a12);
-    // homogeneous eigenvectors of [δy; δI]
-    const double v1x = a12, v1y = l1 - a11;
-    const double v2x = a12, v2y = l2 - a11;
     const double dy0 = -1.0, dI0 = -I_ss;
-    const double den = v1x * v2y - v2x * v1y;
-    const double c1 = (dy0 * v2y - dI0 * v2x) / den;
-    const double c2 = (dI0 * v1x - dy0 * v1y) / den;
+    const auto c = expansion2x2(e, dy0, dI0);
+    const double c1 = c[0], c2 = c[1];
     auto y_exact = [&](double t) {
-        return 1.0 + c1 * v1x * std::exp(l1 * t) + c2 * v2x * std::exp(l2 * t);
+        return 1.0 + c1 * e.v1x * std::exp(l1 * t) + c2 * e.v2x * std::exp(l2 * t);
     };
 
     auto ctrl = make_pi_controller({kp, ki, -1e30, 1e30, true});

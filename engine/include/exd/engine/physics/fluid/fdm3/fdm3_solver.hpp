@@ -48,6 +48,9 @@ public:
 
     /// Mutable field state for per-step external manipulation (immersed
     /// solids, actuator disks, HITL edits): apply the change, then `step`.
+    /// Accessing the mutable adapter marks the state dirty; `step()` ingests
+    /// it into the grid (a hard error on an adapter/grid size mismatch) and
+    /// clears the flag — untouched adapters cost nothing.
     FDM3FieldData& field();
 
     /// Current field state (cell-centered values, updated each step).
@@ -74,6 +77,7 @@ public:
 private:
     FDM3Config config_;
     FDM3FieldData field_;
+    bool field_dirty_ = false;
     FDM3StepResult last_step_;
     double time_ = 0.0;
     int step_count_ = 0;

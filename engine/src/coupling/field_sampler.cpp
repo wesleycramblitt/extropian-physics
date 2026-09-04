@@ -2,6 +2,7 @@
 // adapted flow fields, plus the surface-sampling helpers that turn CFD-side
 // fields into the SurfaceFlow data consumed by force evaluators.
 
+#include <exd/engine/mesh/interpolation.hpp>
 #include <exd/engine/coupling/field_sampler.hpp>
 
 #include <algorithm>
@@ -13,6 +14,15 @@
 
 namespace exd::engine::coupling
 {
+
+// local alias for the shared combination arithmetic
+inline double trilinear_scalar(const std::vector<double>& values,
+                               std::size_t base, std::size_t stride,
+                               int nx, int ny,
+                               double fx, double fy, double fz)
+{
+    return exd::engine::mesh::interp::trilinear(values, base, stride, nx, ny, fx, fy, fz);
+}
 
 namespace
 {
@@ -55,39 +65,6 @@ private:
 // as 3·nx·ny·nz with node index (i,j,k) = i + nx·(j + ny·k) and a
 // per-component start offset; pressure is nx·ny·nz with the same node index.
 
-// Interpolate a scalar field at local cell fractions (fx, fy, fz) inside the
-// cell whose lower node is (i, j, k).  `base` is the flat offset of the lower
-// node and `stride` is the distance between consecutive node values (1 for
-// pressure, 3 for velocity components).
-inline double trilinear_scalar(const std::vector<double>& values,
-                               std::size_t base, std::size_t stride,
-                               int nx, int ny,
-                               double fx, double fy, double fz)
-{
-    const std::size_t sx = stride;                                            // +i neighbor
-    const std::size_t sy = stride * static_cast<std::size_t>(nx);             // +j neighbor
-    const std::size_t sz = stride * static_cast<std::size_t>(nx) *
-                           static_cast<std::size_t>(ny);                      // +k neighbor
-
-    const std::size_t i000 = base;
-    const std::size_t i100 = base + sx;
-    const std::size_t i010 = base + sy;
-    const std::size_t i110 = base + sx + sy;
-    const std::size_t i001 = base + sz;
-    const std::size_t i101 = base + sx + sz;
-    const std::size_t i011 = base + sy + sz;
-    const std::size_t i111 = base + sx + sy + sz;
-
-    const double c00 = values[i000] * (1.0 - fx) + values[i100] * fx;
-    const double c10 = values[i010] * (1.0 - fx) + values[i110] * fx;
-    const double c01 = values[i001] * (1.0 - fx) + values[i101] * fx;
-    const double c11 = values[i011] * (1.0 - fx) + values[i111] * fx;
-
-    const double c0 = c00 * (1.0 - fy) + c10 * fy;
-    const double c1 = c01 * (1.0 - fy) + c11 * fy;
-
-    return c0 * (1.0 - fz) + c1 * fz;
-}
 
 class StructuredGridFieldImpl final : public IFlowField3D
 {

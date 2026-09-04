@@ -200,6 +200,24 @@ void compute_pressure_rhs(FDM3Grid& g, const FDM3Config& config, double dt);
 void solve_pressure_poisson(FDM3Grid& g, const FDM3Config& config);
 void correct_velocity(FDM3Grid& g, const FDM3Config& config, double dt);
 
+/// How `project_velocity` applies the pressure correction (the ONE
+/// fractional-step operator shared by the solver's SIMPLE block and the
+/// multi-stage integrators — no more copied Poisson blocks).
+enum class ProjectionMode {
+    OuterSIMPLE,   // the step's correction: stash p', restore the real
+                   // pressure, under-relaxed velocity/pressure update with
+                   // u_old/p_old as the reference state
+    InnerStage,    // a stage projection: fully remove the predictor's
+                   // divergence; the caller's real pressure is restored so
+                   // subsequent stages see the same pressure level
+};
+void project_velocity(FDM3Grid& g, const FDM3Config& config, double dt,
+                      ProjectionMode mode);
+
+/// Apply  u -= relax * dt * grad(p_src)  to the velocity field.
+void apply_pressure_gradient(FDM3Grid& g, double dt, double relax,
+                             const std::vector<double>& p_src);
+
 // ─────────────────────────────────────────────────────
 // Boundary conditions
 // ─────────────────────────────────────────────────────

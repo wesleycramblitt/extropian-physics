@@ -127,25 +127,9 @@ void integrate_heun(FDM3Grid& g, const FDM3Config& config, double dt,
                     g.v[id] = g.v_old[id] + s * dt * dv1[id];
                     g.w[id] = g.w_old[id] + s * dt * dw1[id];
                 }
-        std::vector<double> p_save = g.p;
-        compute_pressure_rhs(g, config, dt);
-        std::fill(g.p.begin(), g.p.end(), 0.0); // zero initial guess + zero-Dirichlet ghosts
-        solve_pressure_poisson(g, config);
-        for (int k = 1; k <= g.nz; ++k)
-            for (int j = 1; j <= g.ny; ++j)
-                for (int i = 1; i <= g.nx; ++i) {
-                    size_t id = g.idx(i, j, k);
-                    double dpdx = (g.p[g.idx(i + 1, j, k)] - g.p[g.idx(i - 1, j, k)]) /
-                                  (2.0 * g.dx);
-                    double dpdy = (g.p[g.idx(i, j + 1, k)] - g.p[g.idx(i, j - 1, k)]) /
-                                  (2.0 * g.dy);
-                    double dpdz = (g.p[g.idx(i, j, k + 1)] - g.p[g.idx(i, j, k - 1)]) /
-                                  (2.0 * g.dz);
-                    g.u[id] -= dt * dpdx;
-                    g.v[id] -= dt * dpdy;
-                    g.w[id] -= dt * dpdz;
-                }
-        g.p = std::move(p_save);   // restore the stale real pressure for k2
+        // the shared fractional-step operator (full stage projection; the
+        // real pressure is restored inside the operator for the k2 stage)
+        project_velocity(g, config, dt, ProjectionMode::InnerStage);
     }
 
     // k2 (with the constant body force)
@@ -255,25 +239,8 @@ void integrate_crank_nicolson(FDM3Grid& g, const FDM3Config& config, double dt,
                     g.v[id] = g.v_old[id] + s * dt * dv_n[id];
                     g.w[id] = g.w_old[id] + s * dt * dw_n[id];
                 }
-        std::vector<double> p_save = g.p;
-        compute_pressure_rhs(g, config, dt);
-        std::fill(g.p.begin(), g.p.end(), 0.0);
-        solve_pressure_poisson(g, config);
-        for (int k = 1; k <= g.nz; ++k)
-            for (int j = 1; j <= g.ny; ++j)
-                for (int i = 1; i <= g.nx; ++i) {
-                    size_t id = g.idx(i, j, k);
-                    double dpdx = (g.p[g.idx(i + 1, j, k)] - g.p[g.idx(i - 1, j, k)]) /
-                                  (2.0 * g.dx);
-                    double dpdy = (g.p[g.idx(i, j + 1, k)] - g.p[g.idx(i, j - 1, k)]) /
-                                  (2.0 * g.dy);
-                    double dpdz = (g.p[g.idx(i, j, k + 1)] - g.p[g.idx(i, j, k - 1)]) /
-                                  (2.0 * g.dz);
-                    g.u[id] -= dt * dpdx;
-                    g.v[id] -= dt * dpdy;
-                    g.w[id] -= dt * dpdz;
-                }
-        g.p = std::move(p_save);
+        // same shared stage projection as integrate_heun
+        project_velocity(g, config, dt, ProjectionMode::InnerStage);
     }
 
     // RHS at predicted state (with the constant body force)

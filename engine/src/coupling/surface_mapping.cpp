@@ -3,6 +3,7 @@
 // coupling manager to move field data between non-matching coupling surfaces
 // (probe point sets and regular grids).
 
+#include <exd/engine/mesh/interpolation.hpp>
 #include <exd/engine/coupling/surface_mapping.hpp>
 
 #include <algorithm>
@@ -79,7 +80,6 @@ bool sample_trilinear(const StructuredScalarGrid& grid,
     const double fy = n[1] - static_cast<double>(j);
     const double fz = n[2] - static_cast<double>(k);
 
-    const std::size_t sx = 1u;
     const std::size_t sy = static_cast<std::size_t>(nx);
     const std::size_t sz = static_cast<std::size_t>(nx) *
                            static_cast<std::size_t>(ny);
@@ -87,24 +87,8 @@ bool sample_trilinear(const StructuredScalarGrid& grid,
                              sy * static_cast<std::size_t>(j) +
                              sz * static_cast<std::size_t>(k);
 
-    const std::size_t i000 = base;
-    const std::size_t i100 = base + sx;
-    const std::size_t i010 = base + sy;
-    const std::size_t i110 = base + sx + sy;
-    const std::size_t i001 = base + sz;
-    const std::size_t i101 = base + sx + sz;
-    const std::size_t i011 = base + sy + sz;
-    const std::size_t i111 = base + sx + sy + sz;
-
-    const double c00 = grid.values[i000] * (1.0 - fx) + grid.values[i100] * fx;
-    const double c10 = grid.values[i010] * (1.0 - fx) + grid.values[i110] * fx;
-    const double c01 = grid.values[i001] * (1.0 - fx) + grid.values[i101] * fx;
-    const double c11 = grid.values[i011] * (1.0 - fx) + grid.values[i111] * fx;
-
-    const double c0 = c00 * (1.0 - fy) + c10 * fy;
-    const double c1 = c01 * (1.0 - fy) + c11 * fy;
-
-    value_out = c0 * (1.0 - fz) + c1 * fz;
+    value_out = exd::engine::mesh::interp::trilinear(grid.values, base, 1,
+                                                     nx, ny, fx, fy, fz);
     return true;
 }
 
