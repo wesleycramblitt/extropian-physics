@@ -236,6 +236,110 @@ benchmarked at the grid where their own published runs saturate.
 
 ---
 
+## 2B. Full-engine coverage — every physics module and every multiphysics path gets an anchor
+
+**Coverage criteria (what "good coverage" means here):**
+1. Every physics module in the engine has at least one benchmark family anchored to an
+   exact solution or a public reference (exact preferred; single-group datasets become
+   band anchors).
+2. Every registered multiphysics coupling path has at least one composite or
+   consistency/conservation benchmark (partitioned result vs an analytic composite or an
+   exact steady state).
+3. Every family has a CI-smoke tier (seconds) and a full tier (sweeps).
+4. The matrix below is the living coverage ledger: each family carries a status
+   (planned → implemented → verified) and rolls up into the demo-list map.
+
+| Module (dir) | Family | Anchor | Type |
+|---|---|---|---|
+| fdm3 CFD | B1–B11, B3D-1–8 | as listed in Sections 2/2A | exact/public |
+| fdm 2D (legacy) | shares B1/B2/B4 anchors where applicable | — | exact |
+| BEM aero (reduced_order/bem) | C1 turbine BEM | Betz 16/27, Glauert a = 1/3 (exact); NREL Phase VI measured power (band) | exact + band |
+| fluid/forces | inside C1 (blade element, momentum balance, pressure integration) | force/moment integral checks vs the analytic loads | exact |
+| lumped plenum | C2 plenum/stages | isothermal exponential relaxation (exact); Greitzer B-criterion | exact + semi-analytic |
+| turbomachinery | C3 compression system | Greitzer surge boundary (analytic); stage-map conservation | semi-analytic + exact |
+| electromagnetics (fdtd) | C4 FDTD | Fresnel reflect/transmit 1D (exact); Mie series 2D cylinder (exact); cavity modes (closed form); CFL bound | exact |
+| electromagnetics (circuit) | C5 circuits | RC/RLC closed forms; AC phasor steady state | exact |
+| electromagnetics (static) | C6 static fields | dipole/plate potentials closed form; Laplace series | exact |
+| acoustics | C7 wave solver | d'Alembert + impedance reflection (exact); box eigenmodes (closed form) | exact |
+| structural | C8 elasticity/waves | cantilever PL³/3EI + mode β_nL (closed form); c = √(E/ρ) (exact) | exact |
+| thermal (CHT) | C9 conjugate HT | two-layer series resistance; fin cosh solution + efficiency; transient slab (Fourier) and semi-infinite (erfc) | exact |
+| thermo | C10 EoS/polytropic/steam | polytropic relations (exact); IAPWS-IF97 steam spot values (public table) | exact + public |
+| species | C11 species transport | exact decay; Gaussian release σ² = 2Dt; conservation | exact |
+| reaction | C12 reactor | CSTR algebraic steady state; PFR exponential profile | exact |
+| porous | C13 porous | 1D Darcy linear profile; Forchheimer closed form | exact |
+| rigid_body / multibody | C14 rigid dynamics | slider-crank closed forms; pendulum (small-angle exact, elliptic tables); assembly inertia | exact + tables |
+| robotics | C15 manipulator | FK vs closed-form DH; trajectory vs analytic profiles | exact |
+| particles | C16 particle track | Stokes settling v_t = Δρgd²/18μ; paths in exact flow fields | exact |
+| control | C17 controller | PI on 1st-order plant vs closed-loop closed form | exact |
+| coupling (manager) | C18 partitioned coupling | the same coupled problem vs an analytic composite; energy/mass conservation across exchanges; fixed-point contraction | exact |
+| coupling (turbine system) | C19 coupled turbine | BEM+generator+drive steady operating point vs the analytic power balance | exact |
+| EM+thermal+fluid chain | C20 composite multiphysics | 1D Beer–Lambert absorption → Joule heat → steady conduction (quadratic profile) | exact composite |
+| species+fluid | C21 composite transport | release in uniform fdm3 flow vs the advected Gaussian (σ² = 2Dt) | exact composite |
+
+Family definitions (metrics + tiers; all get a CI smoke tier):
+
+- **C1 BEM turbine**: Betz C_P = 16/27 at a = 1/3 (smoke, exact); Glauert optimum; NREL
+  Phase VI power curve band (full; the definitive public BEM dataset); the water-turbine
+  duct augmentation sanity.  Tier: Betz within 1%; Phase VI within the measured spread.
+- **C2 Plenum/stages**: isothermal plenum pressure relaxation vs exp(−t/τ) exact; stage
+  stack conservation (mass/energy balance < 1%).  Tier: < 1% at 3 time constants.
+- **C3 Compression system**: Greitzer B-parameter surge boundary (analytic criterion —
+  on/off surge prediction vs the criterion); operating-map consistency.  Tier: boundary
+  within ±10%.
+- **C4 FDTD**: 1D plane wave at a dielectric interface vs Fresnel coefficients (exact
+  R,T); 2D TMz cylinder scattering vs the Mie series coefficients (public); cavity
+  eigenfrequencies (closed form); CFL-bound adherence.  Tier: Fresnel within 1% at 20
+  cells/λ; Mie within 5% (band); smoke = reflection sign and magnitude.
+- **C5 Circuits**: RC step (exact e^{−t/RC}); RLC ringing (closed-form damping/ω_d);
+  AC steady state vs phasors.  Tier: < 1% at 3 τ.
+- **C6 Static fields**: point-dipole potential vs the closed form; parallel-plate field;
+  Laplace box vs the series solution.  Tier: < 2% L2.
+- **C7 Acoustics**: 1D pulse propagation vs d'Alembert (exact shift); partial reflection
+  at an impedance step (exact amplitudes); box-mode frequencies.  Tier: < 1% (modes),
+  < 5% (reflection).
+- **C8 Structural**: cantilever tip deflection vs PL³/3EI and mode resonant freqs
+  (β₁L = 1.8751…); axial wave speed √(E/ρ).  Tier: < 2%.
+- **C9 CHT**: two-layer conduction (exact series resistance); straight fin vs the cosh
+  solution and published fin efficiency; transient slab vs the Fourier series and the
+  semi-infinite erfc regime.  Tier: < 2% steady, < 5% transient.
+- **C10 Thermo**: polytropic pV^n relations exact; steam spot-values vs IAPWS-IF97
+  (saturation + superheated table points, < 0.1% band); ideal-vs-real EoS consistency.
+- **C11 Species**: exact decay; Gaussian release σ² = 2Dt (L2 < 3%); global conservation
+  < 1%.
+- **C12 Reaction**: CSTR steady state (algebraic, < 1%); PFR exponential profile
+  (< 2%); Arrhenius temperature sensitivity vs the exact ODE solution.
+- **C13 Porous**: 1D Darcy u = −(k/μ)∇p linear profile (< 1%); Forchheimer closed form
+  (< 3%).
+- **C14 Rigid dynamics**: slider-crank position/velocity/acceleration closed forms
+  (< 1% at 3 crank speeds); pendulum period vs small-angle (exact) and elliptic-integral
+  tables; assembly inertia (exact).
+- **C15 Robotics**: forward kinematics vs closed-form DH trig identities (< 1e-6
+  relative — pure algebra); trajectory vs analytic profiles (< 1%).
+- **C16 Particles**: Stokes settling v_t (< 1%); path in uniform/shear flows vs closed
+  forms (< 2%).
+- **C17 Control**: PI on a 1st-order plant vs the closed-form closed-loop step response
+  (< 1%); gain/phase margins vs the analytic values.
+- **C18 Partitioned coupling**: same composite problem solved partitioned vs monolithic/
+  analytic steady state (consistency < 2%); energy/mass conservation across the exchange
+  boundaries (< 1%); fixed-point convergence rate vs the analytic contraction factor
+  (qualitative).
+- **C19 Coupled turbine**: the matched-speed operating point: BEM torque = generator
+  torque = drive losses at the analytic balance (< 2% power imbalance); speed set-point
+  tracking (exact 1st-order response).
+- **C20 EM+thermal+fluid composite**: 1D slab: I(x) = I₀e^{−αx}, absorbed power →
+  steady conduction with the quadratic interior temperature profile (exact steady state;
+  < 2%); the fluid side carries the heat out (B11 channel Nu as the boundary condition
+  — links to the verified B-family).
+- **C21 Species+fluid composite**: scalar release advected by the uniform fdm3 flow:
+  center shift = Ut (exact), spread σ² = 2Dt (< 3%); total mass conserved (< 1%).
+
+Explicitly OUT of scope for the anchor suite (documented, not silently skipped):
+compliant-wall FSI (the engine's drag-FSI path cannot do structural-deformation
+coupling — the Turek–Hron FSI family needs it), combustion/turbulence DNS-grade
+statistics, and the 12-digit CFD excercise beyond the Schäfer–Turek level.
+
+---
+
 ## 3. Performance & cost methodology
 
 1. **Harness**: a `benchmarks/` target (not unit tests) — one binary per family or a
@@ -290,7 +394,17 @@ benchmarked at the grid where their own published runs saturate.
   anchor); needs the T-field coupling wiring.
 - **Phase 5 — performance harness + registry + CI smoke tags**: Pareto reports, CSV
   registry, `results/README` machine fingerprint, CI wiring for the smoke tier.
+- **Phase 6 — module-wide exact anchors (C1–C17)**: cheapest-exact first — C13 Darcy,
+  C5 circuits, C11 species, C10 polytrope, C8 cantilever, C7 acoustics, C14 crank,
+  C15 FK, C16 settling, C12 reactor, C17 PI, C2 plenum, C1 Betz-level BEM, C6 static,
+  C3 Greitzer, C4 Fresnel/Mie (the compute-heavy FDTD cases last in the phase).
+- **Phase 7 — multiphysics composites (C9, C18–C21)**: C9 CHT fin (exact, fast),
+  C20 EM+thermal+fluid (the demo-list composite), C21 species+fluid, C19 turbine
+  operating point, C18 partitioned-coupling consistency/conservation.  Each composite
+  family reuses already-verified single-physics anchors as its boundary conditions —
+  the multiphysics suite is only as believable as its parts.
 
 Each phase: implement → verify anchors → record rows → commit with the results summary.
 Phase 1 is the recommended starting point (fastest complete accuracy story + the perf
-harness skeleton).
+harness skeleton).  Coverage criterion: the Section 2B matrix is complete when every
+module row has status = verified.
