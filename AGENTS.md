@@ -712,6 +712,73 @@ Before writing any code, ensure:
 
 ---
 
+## 12A. Shared-Core-First Rules (no hacks, no one-offs)
+
+These rules exist because they were violated repeatedly (W16–W19 review,
+`docs/architecture_review.md`). Follow them for EVERY change, not just new
+solvers.
+
+### The shared-core hierarchy (check BEFORE writing math)
+
+1. **Numerics** (`engine/include/exd/engine/numerics/`): ODE integrators
+   (`integrate_step`, 8 schemes), **`sor.hpp`** (the one SOR skeleton:
+   sweep, omega relaxation, RMS/max-change residual, caps, between-sweep
+   hook), CG/BiCGSTAB/GMRES, matrix-free operators, `TimeStepper`,
+   Newton. If you need an iterative solver or a time-stepping loop, USE
+   THESE. Domain point-stencils (weights, sign, ghosts, per-node diagonals)
+   are caller-owned callbacks — the loop machinery is shared.
+2. **Mesh/interpolation** (`engine/include/exd/engine/mesh/`):
+   `StructuredGrid` family + **`interp::trilinear`**. Never hand-roll an
+   eight-corner combination again; the caller owns only the bracket/clamp
+   policy.
+3. **Discretization** (`engine/include/exd/engine/discretization/fdm/`):
+   gradient/divergence/curl/laplacian/upwind, matrix-free operators,
+   `DiffusionStepOperator`. New difference operators EXTEND this module;
+   they do not get a private copy in the domain.
+4. **Index conventions**: a new layout pairing (padded vs flat) must be
+   single-sourced in one header with the conversion functions — the
+   off-by-one class of bugs lives at layout boundaries.
+
+### Hard rules
+
+- **One kernel, many callers.** Any loop/relaxation/integration skeleton
+  used by a second site is extracted to the shared layer on the spot — the
+  second copy is the failure. The sign/ghost/per-node policy stays visible
+  at the call sites, never hidden in duplicated loops.
+- **No silent no-op gates.** Adapter seams (solver.field()-style access)
+  must use explicit state (dirty flags) and report mismatches as HARD
+  errors. A silently dropped edit is a bug, not a convenience.
+- **Stability limits live in the solver layer.** A CFL/diffusion bound that
+  keeps a demo alive belongs in the solver's clamp/validate, never only in
+  a benchmark config. If a run can blow up on `validate()`-passing config,
+  that is a solver defect.
+- **Band-aids name the root cause.** Any stabilization (under-relaxation,
+  projection patches, workarounds) must (a) identify the mechanism in a
+  comment, (b) be isolated as its own knob — never overload an existing
+  config field with a second meaning, and (c) carry an order/accuracy check
+  or a quantified regression.
+- **One fractional-step/projection operator.** Pressure-velocity coupling
+  is implemented once per domain; the solver's step and every time
+  integrator call it. No copies of the Poisson block inside integrators.
+- **Benchmarks never reimplement solver internals.** The harness may
+  compute reference solutions (series, eigen, tables); it may not
+  reconstruct the module's own seams (sync semantics, internal ordering).
+  Add a solver diagnostic instead.
+- **Config knobs have one meaning each.** Semantic overloading (one scalar
+  meaning two things depending on context) is a defect on arrival.
+- **Documented caveats get a regression.** Any "known limitation" or
+  documented quirk (e.g., a cancellation, a coupling gap) must be pinned by
+  a test that QUANTIFIES it before the docs are accepted.
+
+### Review gate
+
+A change is not done until a reviewer pass asks — and answers — "which
+shared primitive does this duplicate?" and "what breaks if the caller
+misuses this seam?" The `reviewer` subagent prompt and this checklist are
+the standing enforcement.
+
+---
+
 ## 13. Common Pitfalls
 
 1. **Adding to public headers too early.** Move types to `include/` only
@@ -751,7 +818,7 @@ Before writing any code, ensure:
 - `docs/modular_solver_architecture.md` — Whole-system architecture + phased
   implementation plan (integrators, rigid bodies, engines, compressors,
   electrical/EM, coupling, FVM/FEM/mesh roadmap)
-- `docs/agent_guide.md` — This document
+- `AGENTS.md` — This document
 - `engine/include/exd/engine/coupling/plugin_interface.hpp` — ISolverPlugin contract
 - `engine/src/physics/fluid/reduced_order/bem/bem_internal.hpp` — BEM internal interfaces
 - `engine/src/physics/fluid/reduced_order/bem/bem_solver.cpp` — BEM orchestration (reference impl)

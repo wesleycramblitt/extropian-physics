@@ -216,7 +216,7 @@ consumers are in-repo and are updated).
 | M7 | Coupling contracts, compatibility rules, configuration pipeline | ✅ done |
 | M8 | Fidelity profiles, diagnostics, output rename | ✅ done |
 | M9 | Presets: turbine/engine demotion, incompressible CFD, CHT | ✅ done |
-| M10 | Docs/README/agent_guide/capability matrix update | ✅ done |
+| M10 | Docs/README/AGENTS.md/capability matrix update | ✅ done |
 | M11 | Final: clean configure, full build, 100 tests green, conformance walkthrough | ✅ done |
 | W14a | FDM domain breadth: species transport (advection-diffusion-reaction, operator-composed on the core runtime) + analytic tests | ✅ done |
 | W14b | FDM domain breadth: transient structural / elastic waves (velocity-Verlet, mirror ghosts, P-wave + energy anchors) | ✅ done |

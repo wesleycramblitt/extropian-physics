@@ -10,7 +10,7 @@
 > presets (`exd::engine::presets::turbine|engine`) rather than app modules.
 
 Authoritative roadmap for turning extropian-physics into a modular, multi-domain,
-multi-discretization solver system. Companion to `agent_guide.md` (conventions)
+multi-discretization solver system. Companion to `AGENTS.md` (conventions)
 and `bem_level3_architecture.md` (reference implementation pattern).
 
 ---
@@ -33,7 +33,7 @@ framework**.
                        · integrators · units · material
 ```
 
-**Rules that make this work (from agent_guide, applied here):**
+**Rules that make this work (from AGENTS.md, applied here):**
 
 - Namespace mirrors directory: `exd::physics::<domain>`.
 - Strategy + Factory for pluggable models; concrete models in anonymous
@@ -182,7 +182,7 @@ implementations privately and `TimeStepper` is not exported.
 
 **Definition of done:** `TimeStepper`/`ConvergenceMonitor` public; all 4+ FDM
 integration methods route through the shared module; integrator_test green;
-`agent_guide.md` §11.5 note updated (promoted).
+`AGENTS.md` §11.5 note updated (promoted).
 
 ---
 
@@ -518,7 +518,7 @@ wrong.
   (π/η/T surfaces, surge curve at dπ/dṁ = 0 per speed line — documented
   surrogate, real surge lines come from rigs/CFD — and relative-Mach choke
   curve). Vector grids are deliberate (config-size data, not hot path;
-  agent_guide §11.1 exception noted).
+  AGENTS.md §11.1 exception noted).
 - `map_lookup.hpp/.cpp` — `sample_operating_map(map, omega, mdot, status)`,
   bilinear; consumes any `OperatingMap` — computed OR rig-test data (the
   `TableLookup` variant pattern).
@@ -701,7 +701,7 @@ with analytic patch tests; rigid body immersed coupling demo runs.
   engines, polytropic for compressors, Courant for FDTD), (c) conservation
   or energy-bookkeeping checks in coupled tests.
 - **Optimizer integration**: keep `solve_x(definition, conditions, config)`
-  pure and batchable (agent_guide §11.4) — new apps must expose the same
+  pure and batchable (AGENTS.md §11.4) — new apps must expose the same
   shape.
 - **Visualization**: generic field channels double as output contracts
   (VTK writers consume `IField3D` channels + mesh types).
@@ -709,7 +709,7 @@ with analytic patch tests; rigid body immersed coupling demo runs.
   config/result structs where convenient, keep doubles in hot paths.
 - **Docs per module**: each new domain adds `docs/<domain>_architecture.md`
   following `bem_level3_architecture.md` as the template.
-- **Checklists**: `agent_guide.md` §12 checklist applies to every new
+- **Checklists**: `AGENTS.md` §12 checklist applies to every new
   solver (config/result/entry/internal/factories/coupling stub/tests/CMake/
   docs).
 
