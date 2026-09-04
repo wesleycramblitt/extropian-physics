@@ -43,7 +43,8 @@ The solver is serial (no OpenMP/TBB) — benchmark throughput as-is, report the 
 | Boussinesq buoyancy, natural convection | B7 de Vahl Davis, B8 Rayleigh–Bénard onset | Published Nusselt tables; linear stability |
 | Thermal-fluid coupling (forced convection) | B11 Graetz / Nu∞ | Series solutions, classic Nu values |
 | Separated flow | B9 Backward-facing step | Gartling / Eça–Hoekstra reference data |
-| Wall-bounded external flow | B10 Blasius layer | Exact similarity solution |
+| Wall-bounded external flow | B10 Blasius layer, B3D-6 yawed plate | Exact similarity (2D + 3D) |
+| 3D geometry/spanwise physics | B3D-1…B3D-8 (Section 2A) | Exact series / published 3D tables / stability onsets |
 
 ---
 
@@ -212,12 +213,18 @@ The solver is serial (no OpenMP/TBB) — benchmark throughput as-is, report the 
 - **Phase 1 — core (B1, B2, B4)**: harness + MMS + TGV + channel.  All three run on the
   existing APIs (body force, Periodic BCs, FixedPressure); fastest to deliver and they pin
   the order/scheme/integrator verification the other phases build on.
-- **Phase 2 — boundary/steady (B3 cavity, B9 step)**: steady-state convergence, wall
-  accuracy; needs longer runs and the SOR-tolerance sweep.
-- **Phase 3 — immersed/FSI (B5 sphere, B6 cylinder)**: reuses the W16 solids; the flagship
-  public anchor (Schäfer–Turek); drag measurement per the W16 caveat.
-- **Phase 4 — thermal (B7, B8, B11)**: Boussinesq + thermal channel; de Vahl Davis and the
-  Rayleigh–Bénard linear-stability anchor; needs the T-field coupling wiring.
+- **Phase 2 — boundary/steady (B3 cavity, B9 step, + B3D-1, B3D-2, B3D-7)**: steady-state
+  convergence, wall accuracy; the 3D family starts here with the exact duct series
+  (B3D-1, the cheapest genuine-3D anchor) and the cubic cavity; needs longer runs and the
+  SOR-tolerance sweep.
+- **Phase 3 — immersed/FSI (B5 sphere, B6 cylinder, + B3D-3, B3D-4, B3D-5)**: reuses the
+  W16 solids; the flagship public anchors (Schäfer–Turek 2D, the DFG/FeatFlow 3D band,
+  and the Barkley–Henderson mode-A/B onsets); drag measurement per the W16 caveat; the 3D
+  wake cases (B3D-4/5) are the most compute-hungry → ran last in the phase.
+- **Phase 4 — thermal (B7, B8, B11, + B3D-6, B3D-8)**: Boussinesq + thermal channel; de
+  Vahl Davis, Fusegi's cubic cavity, the Rayleigh–Bénard linear-stability anchor, and the
+  exact yawed-plate 3D similarity solution (B3D-6, the cheapest 3D thermal-adjacent
+  anchor); needs the T-field coupling wiring.
 - **Phase 5 — performance harness + registry + CI smoke tags**: Pareto reports, CSV
   registry, `results/README` machine fingerprint, CI wiring for the smoke tier.
 
