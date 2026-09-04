@@ -31,7 +31,7 @@ entry points below (pattern + recipes: `docs/real_run_guide.md`).
 |---|---|---|
 | Movable solids in flow ("veins", pistons, impellers) | `fdm3::add_immersed_solid_forces` (soft penalty) or `fdm3::apply_kinematic_freeze` (hard, recommended) with per-step geometry updates | frozen cells |u| < 0.02; flow diverts (umax > 1.5× inlet) with global mass balance < 3%; moving solid drags the occupied cells to u_solid |
 | Natural convection | `fdm3::add_boussinesq_forces` (T field from the thermal channel) | exact per-cell buoyancy; closed-box circulation (hot bottom rises, upper returns) |
-| Caveats (documented) | fdm3 Heun is unstable with sustained body forces (use ForwardEuler/RK4); the collocated projection cancels uniform interior body forces in the developed state (freeze for hard blockage) | — |
+| Caveats (documented) | the collocated projection cancels uniform interior body forces in the developed state (freeze for hard blockage).  The former "Heun body-force instability" was diagnosed and FIXED in W17 (root cause: the plain trapezoid's full-step second stage + stale pressure in wall+inlet channels; forces were innocent) — Heun is now stable with sustained body forces | — |
 
 ---
 ## 1. Wind turbine / water turbine — real multiphysics over a mesh

@@ -211,12 +211,15 @@ bool FDM3Solver::step(double dt, ModelStatus& status) {
     std::copy(grid_->w.begin(), grid_->w.end(), grid_->w_old.begin());
     std::copy(grid_->p.begin(), grid_->p.end(), grid_->p_old.begin());
 
-    // 2. Predictor (explicit time integration on the momentum equations,
-    //    then any body force, which is constant during the step).
-    apply_time_integration(*grid_, config_, dt_eff);
-    if (body_force_active_) {
-        apply_body_force_to_predictor(*grid_, body_fx_, body_fy_, body_fz_, dt_eff);
-    }
+    // 2. Predictor (explicit time integration on the momentum equations;
+    //    the body force is constant during the step and enters EVERY stage
+    //    of the integrator's RHS — the correct treatment for all methods;
+    //    the old post-step application mismatched the time levels and made
+    //    Heun unstable with sustained forces).
+    apply_time_integration(*grid_, config_, dt_eff,
+                           body_force_active_ ? &body_fx_ : nullptr,
+                           body_force_active_ ? &body_fy_ : nullptr,
+                           body_force_active_ ? &body_fz_ : nullptr);
 
     // 3. Pressure-velocity coupling (SIMPLE): Poisson solve for p' with a
     //    zero initial guess; periodic face ghosts are refreshed during the

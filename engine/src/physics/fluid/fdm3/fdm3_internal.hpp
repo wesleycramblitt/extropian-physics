@@ -159,11 +159,31 @@ void compute_rhs(const FDM3Grid& g, const FDM3Config& config,
                  std::vector<double>& du_out, std::vector<double>& dv_out,
                  std::vector<double>& dw_out);
 
-void integrate_forward_euler(FDM3Grid& g, const FDM3Config& config, double dt);
-void integrate_heun(FDM3Grid& g, const FDM3Config& config, double dt);
-void integrate_rk4(FDM3Grid& g, const FDM3Config& config, double dt);
-void integrate_crank_nicolson(FDM3Grid& g, const FDM3Config& config, double dt);
-void apply_time_integration(FDM3Grid& g, const FDM3Config& config, double dt);
+// The body-force arrays (nx·ny·nz, 0-based flat) are optional per-step
+// accelerations (m/s²).  When non-null they enter the RHS of EVERY stage of
+// the time integrator (constant during the step) — the correct treatment
+// for all integrators; appending them AFTER the step (the old Heun bug)
+// mismatched the time levels and destabilized Heun with sustained forces.
+void integrate_forward_euler(FDM3Grid& g, const FDM3Config& config, double dt,
+                             const std::vector<double>* fx = nullptr,
+                             const std::vector<double>* fy = nullptr,
+                             const std::vector<double>* fz = nullptr);
+void integrate_heun(FDM3Grid& g, const FDM3Config& config, double dt,
+                    const std::vector<double>* fx = nullptr,
+                    const std::vector<double>* fy = nullptr,
+                    const std::vector<double>* fz = nullptr);
+void integrate_rk4(FDM3Grid& g, const FDM3Config& config, double dt,
+                   const std::vector<double>* fx = nullptr,
+                   const std::vector<double>* fy = nullptr,
+                   const std::vector<double>* fz = nullptr);
+void integrate_crank_nicolson(FDM3Grid& g, const FDM3Config& config, double dt,
+                              const std::vector<double>* fx = nullptr,
+                              const std::vector<double>* fy = nullptr,
+                              const std::vector<double>* fz = nullptr);
+void apply_time_integration(FDM3Grid& g, const FDM3Config& config, double dt,
+                            const std::vector<double>* fx = nullptr,
+                            const std::vector<double>* fy = nullptr,
+                            const std::vector<double>* fz = nullptr);
 
 // ─────────────────────────────────────────────────────
 // Grid setup / field extraction
@@ -195,19 +215,6 @@ void update_periodic_field_ghosts(FDM3Grid& g, const FDM3Config& config,
 // ─────────────────────────────────────────────────────
 // Body force helper
 // ─────────────────────────────────────────────────────
-//
-// Adds dt * f to the predictor velocities (f in m/s², force per unit mass).
-// The arrays hold one value per interior cell (nx*ny*nz) in the order
-// i + nx*(j + ny*k).  Because the force is constant within a step, applying
-// it once after the explicit predictor is equivalent to including it in every
-// Runge-Kutta stage (for Heun/RK4 the stage weight sums to 1).
-
-void apply_body_force_to_predictor(FDM3Grid& g,
-                                   const std::vector<double>& fx,
-                                   const std::vector<double>& fy,
-                                   const std::vector<double>& fz,
-                                   double dt);
-
 // ─────────────────────────────────────────────────────
 // Utility / diagnostics
 // ─────────────────────────────────────────────────────

@@ -33,10 +33,7 @@ FDM3Config duct(int nx = 20, int ny = 8, int nz = 8)
     flow.velocity_under_relaxation = 0.8;
     flow.pressure_under_relaxation = 0.35;
     flow.convergence_tolerance = 1e-6;
-    // NOTE: the fdm3 Heun step is unstable with SUSTAINED body forces (a
-    // pre-existing solver quirk — the demos always use ForwardEuler);
-    // use ForwardEuler or RK4 when body forces are active.
-    flow.time_integration = TimeIntegration::ForwardEuler;
+    flow.time_integration = TimeIntegration::Heun;
     return flow;
 }
 
@@ -209,6 +206,83 @@ TEST_CASE("Immersed moving solid: the occupied cells are dragged to u_solid")
     // the far field has barely responded on this timescale
     const double u_corner = f.u[f.index(2, 2, 2)];
     CHECK(std::fabs(u_corner) < 0.12);
+}
+
+
+TEST_CASE("Heun with sustained body forces is stable (the W16 force fix)")
+{
+    // Regression for the Heun time-level bug: the body force must enter
+    // every integrator stage; the old post-step application destabilized
+    // Heun with ANY sustained force (uniform or immersed).
+    FDM3Config flow;
+    flow.nx = 20; flow.ny = 8; flow.nz = 8;
+    flow.lx = 1.0; flow.ly = 0.4; flow.lz = 0.4;
+    flow.rho = 1.225; flow.mu = 0.05;
+    flow.dt = 0.01; flow.max_steps = 100000;
+    flow.pressure_max_iterations = 60; flow.pressure_tolerance = 5e-6;
+    flow.sor_omega = 1.45;
+    flow.velocity_under_relaxation = 0.8; flow.pressure_under_relaxation = 0.35;
+    flow.convergence_tolerance = 1e-6;
+    flow.time_integration = TimeIntegration::Heun;
+    FDM3BoundaryCondition inlet;
+    inlet.face = BoundaryFace::XMin;
+    inlet.type = FDMBoundaryType::Inlet;
+    inlet.u_value = 0.2;
+    FDM3BoundaryCondition outlet;
+    outlet.face = BoundaryFace::XMax;
+    outlet.type = FDMBoundaryType::FixedPressure;
+    outlet.p_value = 0.0;
+    flow.boundary_conditions.push_back(inlet);
+    flow.boundary_conditions.push_back(outlet);
+    for (auto face : {BoundaryFace::YMin, BoundaryFace::YMax,
+                      BoundaryFace::ZMin, BoundaryFace::ZMax})
+    {
+        FDM3BoundaryCondition bc;
+        bc.face = face;
+        bc.type = FDMBoundaryType::Wall;
+        flow.boundary_conditions.push_back(bc);
+    }
+
+    const size_t N = fdm3_cell_count(flow);
+    ModelStatus st;
+    FDM3Solver solver;
+    REQUIRE(solver.initialize(flow, st));
+    std::vector<double> fx(N, 0.05), fy(N, 0.0), fz(N, 0.0);   // uniform +x
+    // switch to an immersed penalty after the first 1500 steps
+    ImmersedSolid box;
+    box.name = "b";
+    box.shape = ImmersedShape::Box;
+    box.center = {0.5, 0.1, 0.2};
+    box.half_extents = {0.05, 0.05, 0.05};
+    box.penalty = 10.0;
+    bool finite = true;
+    for (int it = 0; it < 3000; ++it)
+    {
+        if (it == 1500)
+        {
+            std::fill(fx.begin(), fx.end(), 0.0);
+            std::fill(fy.begin(), fy.end(), 0.0);
+            std::fill(fz.begin(), fz.end(), 0.0);
+        }
+        const auto& f = solver.field();
+        if (it >= 1500)
+            REQUIRE(add_immersed_solid_forces(flow, {box}, f.u, f.v, f.w,
+                                              fx, fy, fz, st));
+        REQUIRE(solver.set_body_force(fx, fy, fz, st));
+        REQUIRE(solver.step(flow.dt, st));
+        const auto& f2 = solver.field();
+        for (size_t i = 0; i < N; ++i)
+            if (!std::isfinite(f2.u[i]) || !std::isfinite(f2.p[i]))
+                finite = false;
+        REQUIRE(finite);
+    }
+    // the flow actually developed and responded (not frozen/zero)
+    const auto& f = solver.field();
+    double umax = 0.0;
+    for (size_t i = 0; i < N; ++i)
+        umax = std::max(umax, std::fabs(f.u[i]));
+    CHECK(umax > 0.2);
+    CHECK(umax < 2.0);
 }
 
 TEST_CASE("Immersed penalty force: the force formula is exact per cell")
