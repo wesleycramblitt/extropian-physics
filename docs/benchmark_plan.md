@@ -340,6 +340,59 @@ statistics, and the 12-digit CFD excercise beyond the Schäfer–Turek level.
 
 ---
 
+## 2C. Delivery record — runnable demo status (benchmarks/benchmark_suite)
+
+Status: FIRST WAVE implemented and smoke-verified (all numbers below from the
+smoke tier on the dev machine; full sweeps available via `--full`).  One
+runnable binary, `benchmarks/benchmark_suite`, cases dispatched by name
+(`--list`, `--case NAME`, `--full`, `--grid N`); CMake target built with the
+tests.  Remaining families (deferred): B3 cavity, B5/B6 immersed/cylinder,
+B7/B8/B11 thermal, C4/C6 FDTD-static, C9 CHT, C18–C21 composites, B3D series.
+Each buys the same harness pattern; the composites need the coupling wiring.
+
+Verified smoke results (metric, measured, tier target):
+
+| Case | Metric | Smoke result | Tier |
+|---|---|---|---|
+| B1 MMS | window-L2 spatial order (Central) | 1.94 (12/24³) | ~2 |
+| B2 TGV | decay-rate ratio (1.0 exact) | 1.050 @ 16³ → 0.993 @ 32³ | within 10% |
+| B4 channel | profile L2 / Q rel err | 3.9e-3 / 1.5e-5 | Q < 2% |
+| C2 plenum | linearized-Greitzer 2×2 rel err | 0.28% | < 1% |
+| C5 circuit | i(4τ) rel err | 3.7e-5 | < 1% |
+| C7 wave | f = c/2Lx rel err | 2.6e-4 | < 1% |
+| C8 oedometer column | u_z max rel err | 1.2e-3 (M-modulus anchor) | < 2% |
+| C10 polytrope | τ closed form + η roundtrip | 3.5e-16 | < 1e-9 |
+| C11 species | exponential decay | 8.6e-15 | < 1% |
+| C12 reactor | A→B + conservation | 2.6e-11 / 2.2e-16 | < 2% |
+| C13 Darcy | steady linear profile L2 | 2.7e-16 | < 1% |
+| C14 crank | closed-form kinematics | 1.4e-16 | < 1e-6 |
+| C15 FK | 2-link trig chain | 0 | < 1e-9 |
+| C16 settling | exact v,z | 7.2e-14 | < 2% |
+| C17 PI | closed-loop step response | 2.2e-5 | < 1% |
+
+Recorded findings during the bring-up (all written into the case comments and
+the conformance log):
+1. **FDM3Solver field()-sync bug FIXED (W18 code)**: `field()` was an
+   extract-only adapter — edits (immersed freeze/penalty, hand-set ICs) never
+   reached the solver's grid, so the W16 external-manipulation seam was inert
+   and its tests passed tautologically.  `step()` now ingests the adapter
+   first; the W16 anchors still pass (109/109) with the REAL freeze physics.
+2. **TGV**: the (1,1,1) mode decays with k² = 3 (e^(−2νk²t)); report the
+   rate ratio, which converges quadratically (1.050/0.981/0.993 at 16/24/32³).
+3. **MMS**: the continuous-residual residual drifts linearly in time (operator
+   mismatch); the fixed-window L2 is the order metric (1.94 ≈ 2) and the
+   drift is reported separately.  Two traps documented: Hybrid→upwind branch
+   at cell Pe > 2 adds ~13ν numerical diffusion; the explicit-diffusion
+   stability bound is ν·dt/h² ≤ 1/6 (unclamped by the CFL logic).
+4. **C8**: the free-lateral body-force column at ν = 0.3 deviates O(1) from
+   the uniaxial formula (1.7× at 11×25, ~13× at 7×24) — a limitation of the
+   discrete free-surface (Robin) treatment under Poisson contraction; the
+   oedometer-confined anchor (M-modulus) is exact to 0.12% and the ν = 0
+   free column to 6e-11.  The full-plane-pin mask also stagnates the SOR
+   (residual stuck at 1.0); the roller+corner-pins convention converges.
+
+---
+
 ## 3. Performance & cost methodology
 
 1. **Harness**: a `benchmarks/` target (not unit tests) — one binary per family or a

@@ -205,6 +205,26 @@ bool FDM3Solver::step(double dt, ModelStatus& status) {
     double dt_eff = dt;
     clamp_dt_from_cfl(*grid_, config_, dt_eff);
 
+    // 0. Ingest external field edits (the W16 per-step manipulation seam:
+    //    field() is documented as apply-the-change-then-step; the adapter
+    //    must therefore feed the grid BEFORE the step uses it — previously
+    //    extract_field() only ever copied grid -> adapter, so immersed
+    //    freeze/penalty edits and hand-set initial conditions were silently
+    //    inert on the solver state).
+    if (field_.nx == grid_->nx && field_.ny == grid_->ny && field_.nz == grid_->nz &&
+        !field_.u.empty()) {
+        for (int k = 0; k < grid_->nz; ++k)
+            for (int j = 0; j < grid_->ny; ++j)
+                for (int i = 0; i < grid_->nx; ++i) {
+                    const size_t fid = field_.index(i, j, k);
+                    const size_t gid = grid_->idx(i + 1, j + 1, k + 1);
+                    grid_->u[gid] = field_.u[fid];
+                    grid_->v[gid] = field_.v[fid];
+                    grid_->w[gid] = field_.w[fid];
+                    grid_->p[gid] = field_.p[fid];
+                }
+    }
+
     // 1. Save state for SIMPLE
     std::copy(grid_->u.begin(), grid_->u.end(), grid_->u_old.begin());
     std::copy(grid_->v.begin(), grid_->v.end(), grid_->v_old.begin());
