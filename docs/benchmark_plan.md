@@ -173,6 +173,69 @@ The solver is serial (no OpenMP/TBB) — benchmark throughput as-is, report the 
 
 ---
 
+## 2A. 3D coverage — every 2D-anchored case also gets a genuine-3D path
+
+**Rule for every case whose canonical reference is 2D**: two obligations —
+(1) the **periodic-extrusion recovery check** (thin span, Periodic z BCs: the
+3D solver must reproduce the published 2D value on the midplane inside the
+documented slab-deviation band — this is itself a 3D validation with a public
+anchor), and (2) a **genuine-3D benchmark** with its own reference, from the
+table below.  Where a case's 3D reference is only a single-group dataset
+(DFG-3D cylinder, 3D BFS DNS) we treat it as a **band anchor** (± published
+spread), never as digit-exact like the 2D tables.
+
+| 2D-anchored case | Extra 3D anchor(s) | Type |
+|---|---|---|
+| Channel B4 | **Rectangular-duct exact double-series** (Boussinesq 1868; the classic laminar-duct series solution) — genuinely 3D profile u(y,z); plus exact 3D Couette | exact |
+| Cavity B3 | **Cubic-cavity tables**: Albensoeder & Kuhlmann, *Accurate three-dimensional lid-driven cavity flow*, JCP 206 (2005) — Re 100/400/1000; the 2D midplane must also match Ghia | published tables |
+| Cylinder B6 | **DFG/FeatFlow 3D cylinder benchmark** (Turek group; Re = 20, published 3D Cd/Δp — fetch the exact dataset from the FeatFlow benchmark page); **Barkley & Henderson**, *3D Floquet stability of the cylinder wake*, JFM 322 (1996): mode-A onset Re ≈ 188.5, mode-B ≈ 259 — quantitative 3D stability anchors | published + exact-ish |
+| Step B9 | Spanwise-periodic recovery of x1/H ≈ 6.26; finite-aspect-ratio end-wall trends vs **Armaly et al.** (expt, 1983) and published 3D-step DNS (fetch; band anchor) | published (band) |
+| Blasius B10 | **Yawed (swept) flat plate**: exact 3D similarity — both boundary-layer components follow f′(η), closed-form skin friction 0.664/√Re_x per component | exact |
+| de Vahl Davis B7 | **Fusegi, Hyun, Kuwahara, Farouk** (1991): differentially heated *cubical* cavity — 3D Nu_mean / u_max tables at Ra = 10³–10⁶ | published tables |
+| Stokes sphere B5 | already intrinsically 3D; extend to the unsteady wake: **Tomboulides & Orszag** (2000) and **Johnson & Patel** (1999) sphere-wake DNS — Cd(Re), St, wake-structure onset bands | published (band) |
+| TGV / MMS / RB onset | already 3D by construction | exact |
+
+New 3D benchmark families (metrics + tiers):
+
+- **B3D-1 Rectangular-duct Poiseuille**: exact double-series u(y,z) (truncation < 1e-6 at
+  ~200 terms) on a 3D duct (Wall × 4, FixedPressure in/out).  Metrics: profile L2 vs dx
+  sweep (spatial-order re-check in 3D); Q vs the series integral.  Tier: L2 < 2% at the
+  finest grid; CI smoke at 24 × 16 × 16.
+- **B3D-2 Cubic lid-driven cavity**: Albensoeder–Kuhlmann tables at Re 100/400/1000
+  (midplane + spanwise structure, corner vortices).  Tier: midplane centerline-L2 < 5%
+  (Re = 100), < 15% (Re = 1000); smoke = v-sign structure on the midplane.
+- **B3D-3 DFG/FeatFlow 3D cylinder** (Re = 20, span 0.41 with wall z): published 3D Cd/Δp
+  band.  Tier: Cd inside the published band at fine grids; the 2D-recovery check
+  (thin-span Periodic z) within 10% of the Schäfer–Turek 2D value.
+- **B3D-4 Cylinder wake 3D instabilities**: spanwise-periodic run (span ≥ 4D for mode A);
+  amplify small random 3D noise at Re = 150/200/260/300; measure the fastest-growing
+  spanwise mode.  Metrics: onset bracket (sign flip of the 3D-mode growth) within ±15% of
+  the Barkley–Henderson Re_c (188.5 / 259); fastest-growing wavelength within ±20%
+  (3.96D / 0.82D); 3D-wake St ≈ 0.2–0.21 band.  Tier: bracket-only at coarse grids;
+  wavelength at fine; smoke at Re = 200 = a 3D mode appears.
+- **B3D-5 Sphere wake** (Re = 200–350): Cd(Re) vs Schiller–Naumann + the DNS tables; the
+  steady → planar-symmetric wake onset; St in the unsteady regime vs the DNS bands.
+  Tier: Cd within 10% at Re ≤ 300; wake character qualitative.
+- **B3D-6 Yawed flat plate**: uniform streamwise U + spanwise W over a plate; exact 3D
+  self-similar profile; metrics: per-component Cf vs 0.664/√Re_x (beyond the corner
+  transient), δ*/θ ≈ 2.59.  Tier: Cf within 15%; smoke = spanwise component shape-matches
+  f′(η) (L1 < 10%).
+- **B3D-7 3D backward-facing step**: (a) spanwise-periodic: x1/H recovers 2D (6.26 band)
+  on the midplane; (b) finite-span runs at aspect ratios 2/4/8 vs Armaly's end-wall /
+  spanwise-variation trends (laminar region, Re ≈ 300–800).  Tier: x1 within 10%
+  (periodic span); spanwise trends qualitative.
+- **B3D-8 Cubic differentially-heated cavity** (Ra = 10³–10⁶): Nu_mean vs the Fusegi
+  tables; span aspect-ratio sweep 1 → 4 must show the 3D Nu approaching the de Vahl Davis
+  2D value.  Tier: Nu within 10% (Ra ≤ 10⁵); the AR-sweep monotonic and matching the
+  literature trend.
+
+3D mesh/cost note for Section 3: each refinement doubles the cells per axis = ×8 cost per
+step PLUS the SOR iteration-count growth — the 3D smoke tier stays at 32³-ish, full at
+128³, reference at 256³ for the exact-anchor families; the band-anchor families are
+benchmarked at the grid where their own published runs saturate.
+
+---
+
 ## 3. Performance & cost methodology
 
 1. **Harness**: a `benchmarks/` target (not unit tests) — one binary per family or a
